@@ -29,18 +29,27 @@ type whoCan struct {
 
 // RootCmd is the command we're goimg to run
 var RootCmd = &cobra.Command{
-	Use:     "kubectl-who-can VERB TYPE",
-	Short:   "who-can shows which users, groups and service accounts can perform a given action",
-	Long:    "who-can shows which users, groups and service accounts can perform a given verb on a given resource type",
-	Example: "TBC",
-	Run: func(cmd *cobra.Command, args []string) {
-		w := whoCan{}
-		if err := w.Complete(args); err != nil {
-			fmt.Printf("Incomplete command: %v\n", err)
+	Use:   "kubectl-who-can VERB TYPE [NAME]",
+	Short: "who-can shows which users, groups and service accounts can perform a given action",
+	Long:  "who-can shows which users, groups and service accounts can perform a given verb on a given resource type",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 2 {
+			return errors.New("please specify at least a verb and a resource type")
 		}
+		if len(args) > 2 {
+			return errors.New("TODO! resource name checking not yet implemented")
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
 		if err := cmd.ParseFlags(args); err != nil {
 			fmt.Printf("Error parsing flags: %v\n", err)
+			os.Exit(1)
 		}
+
+		w := whoCan{}
+		w.verb = args[1]
+		w.resource = args[2]
 
 		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			clientcmd.NewDefaultClientConfigLoadingRules(),
@@ -78,19 +87,4 @@ func Execute() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-}
-
-func (w *whoCan) Complete(args []string) error {
-	switch len(args) {
-	case 2, 3:
-		w.verb = args[0]
-		w.resource = args[1]
-		if len(args) == 3 {
-			w.resourceName = args[2]
-			fmt.Println("Resource name checking not yet implemented")
-		}
-	default:
-		return errors.New("you must specify two or three arguments: verb, resource, and optional resourceName")
-	}
-	return nil
 }
