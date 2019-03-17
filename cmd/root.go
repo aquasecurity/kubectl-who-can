@@ -48,8 +48,8 @@ var RootCmd = &cobra.Command{
 		}
 
 		w := whoCan{}
-		w.verb = args[1]
-		w.resource = args[2]
+		w.verb = args[0]
+		w.resource = args[1]
 
 		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			clientcmd.NewDefaultClientConfigLoadingRules(),
