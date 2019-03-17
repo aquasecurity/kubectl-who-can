@@ -1,6 +1,8 @@
 # kubectl-who-can
 [WIP] show who has permissions to &lt;verb> &lt;resources> in kubernetes
 
+[![asciicast](https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j.svg)](https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j)
+
 ## TODO
 
 * Filter by namespace
