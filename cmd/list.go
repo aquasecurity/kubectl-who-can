@@ -8,6 +8,8 @@ import (
 	"github.com/golang/glog"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
 func (w *whoCan) do() error {
@@ -157,18 +159,20 @@ func (w *whoCan) output(roleBindings []rbacv1.RoleBinding, clusterRoleBindings [
 	if len(roleBindings) == 0 {
 		fmt.Printf("No subjects found with permissions to %s %s assigned through RoleBindings\n", w.verb, w.resource)
 	} else {
-		fmt.Fprintln(wr, "ROLEBINDING\tSUBJECT\tTYPE\tNAMESPACE")
+		fmt.Fprintln(wr, "ROLEBINDING\tNAMESPACE\tSUBJECT\tTYPE\tSA-NAMESPACE")
 		for _, rb := range roleBindings {
 			for _, s := range rb.Subjects {
-				fmt.Fprintf(wr, "%s\t%s\t%s\t%s\n", rb.Name, s.Name, s.Kind, s.Namespace)
+				fmt.Fprintf(wr, "%s\t%s\t%s\t%s\t%s\n", rb.Name, rb.GetNamespace(), s.Name, s.Kind, s.Namespace)
 			}
 		}
 	}
 
+	fmt.Fprintln(wr)
+
 	if len(clusterRoleBindings) == 0 {
 		fmt.Printf("No subjects found with permissions to %s %s assigned through ClusterRoleBindings\n", w.verb, w.resource)
 	} else {
-		fmt.Fprintln(wr, "CLUSTERROLEBINDING\tSUBJECT\tTYPE\tNAMESPACE")
+		fmt.Fprintln(wr, "CLUSTERROLEBINDING\tSUBJECT\tTYPE\tSA-NAMESPACE")
 		for _, rb := range clusterRoleBindings {
 			for _, s := range rb.Subjects {
 				fmt.Fprintf(wr, "%s\t%s\t%s\t%s\n", rb.Name, s.Name, s.Kind, s.Namespace)
