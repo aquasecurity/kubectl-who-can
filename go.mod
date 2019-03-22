@@ -1,4 +1,4 @@
-module github.com/lizrice/kubectl-who-can
+module github.com/aquasecurity/kubectl-who-can
 
 go 1.12
 
