@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/lizrice/kubectl-who-can/cmd"
+	"github.com/aquasecurity/kubectl-who-can/cmd"
 )
 
 func main() {
