@@ -4,13 +4,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
 	"os"
 
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	// "k8s.io/cli-runtime/pkg/genericclioptions"
 )
+
+var namespace string
 
 type role struct {
 	name          string
@@ -27,7 +29,7 @@ type whoCan struct {
 	r            roles
 }
 
-// RootCmd is the command we're goimg to run
+// RootCmd is the command we're going to run
 var RootCmd = &cobra.Command{
 	Use:   "kubectl-who-can VERB TYPE [NAME]",
 	Short: "who-can shows which users, groups and service accounts can perform a given action",
@@ -76,6 +78,9 @@ var RootCmd = &cobra.Command{
 }
 
 func init() {
+	RootCmd.PersistentFlags().StringVarP(&namespace, "namespace", "n", v1.NamespaceAll,
+		"if present, the namespace scope for the CLI request")
+
 	flag.CommandLine.VisitAll(func(goflag *flag.Flag) {
 		RootCmd.PersistentFlags().AddGoFlag(goflag)
 	})

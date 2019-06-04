@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"os"
 	"text/tabwriter"
 
@@ -12,11 +14,34 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
+func (w *whoCan) validateNamespace(name string) error {
+
+	if name != v1.NamespaceAll {
+		ns, err := w.client.CoreV1().Namespaces().Get(name, metav1.GetOptions{})
+		if err != nil {
+			if statusErr, ok := err.(*errors.StatusError); ok &&
+				statusErr.Status().Reason == metav1.StatusReasonNotFound {
+				return fmt.Errorf("not found")
+			}
+			return fmt.Errorf("getting namespace: %v", err)
+		}
+		if ns.Status.Phase != v1.NamespaceActive {
+			return fmt.Errorf("invalid status: %v", ns.Status.Phase)
+		}
+	}
+	return nil
+}
+
 func (w *whoCan) do() error {
+	err := w.validateNamespace(namespace)
+	if err != nil {
+		return fmt.Errorf("validating namespace: %s: %v", namespace, err)
+	}
+
 	w.r = make(map[role]struct{}, 10)
 
 	// Get the Roles that relate to the Verbs and Resources we are interested in
-	err := w.getRoles()
+	err = w.getRoles()
 	if err != nil {
 		return fmt.Errorf("getting Roles: %v", err)
 	}
@@ -47,7 +72,7 @@ func (w *whoCan) do() error {
 }
 
 func (w *whoCan) getRoles() error {
-	rl, err := w.client.RbacV1().Roles("").List(metav1.ListOptions{})
+	rl, err := w.client.RbacV1().Roles(namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -109,7 +134,7 @@ func (w *whoCan) policyRuleMatch(rule rbacv1.PolicyRule, roleName string, isClus
 }
 
 func (w *whoCan) getRoleBindings() (roleBindings []rbacv1.RoleBinding, err error) {
-	rbl, err := w.client.RbacV1().RoleBindings("").List(metav1.ListOptions{})
+	rbl, err := w.client.RbacV1().RoleBindings(namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return
 	}
