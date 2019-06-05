@@ -14,44 +14,32 @@ import (
 
 var namespace string
 
-type role struct {
-	name          string
-	isClusterRole bool
-}
-
-type roles map[role]struct{}
-
-type whoCan struct {
-	verb         string
-	resource     string
-	resourceName string
-	client       kubernetes.Interface
-	r            roles
-}
-
 // RootCmd is the command we're going to run
 var RootCmd = &cobra.Command{
 	Use:   "kubectl-who-can VERB TYPE [NAME]",
 	Short: "who-can shows which users, groups and service accounts can perform a given action",
 	Long:  "who-can shows which users, groups and service accounts can perform a given verb on a given resource type",
+	Example: `  # List who can get pods in all namespaces:
+  kubectl-who-can get pods
+
+  # List who can create services in the foo namespace:
+  kubectl-who-can create services -n foo
+
+  # List who can get the mongodb service in the bar namespace:
+  kubectl-who-can get service mongodb --namespace bar`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 2 {
 			return errors.New("please specify at least a verb and a resource type")
 		}
-		if len(args) > 2 {
-			return errors.New("TODO! resource name checking not yet implemented")
-		}
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := cmd.ParseFlags(args); err != nil {
-			fmt.Printf("Error parsing flags: %v\n", err)
-			os.Exit(1)
-		}
-
 		w := whoCan{}
 		w.verb = args[0]
 		w.resource = args[1]
+		if len(args) > 2 {
+			w.resourceName = args[2]
+		}
 
 		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			clientcmd.NewDefaultClientConfigLoadingRules(),

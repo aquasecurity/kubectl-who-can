@@ -4,6 +4,7 @@ import (
 	"fmt"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/kubernetes"
 	"os"
 	"text/tabwriter"
 
@@ -13,6 +14,21 @@ import (
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
+
+type role struct {
+	name          string
+	isClusterRole bool
+}
+
+type roles map[role]struct{}
+
+type whoCan struct {
+	verb         string
+	resource     string
+	resourceName string
+	client       kubernetes.Interface
+	r            roles
+}
 
 func (w *whoCan) validateNamespace(name string) error {
 
@@ -81,6 +97,26 @@ func (w *whoCan) getRoles() error {
 	return nil
 }
 
+func (w *whoCan) filterRoles(roles *rbacv1.RoleList) {
+	for _, item := range roles.Items {
+		for _, rule := range item.Rules {
+			if !w.policyMatches(rule) {
+				glog.V(3).Infof("Role [%s] doesn't match policy filter", item.Name)
+				continue
+			}
+
+			newRole := role{
+				name:          item.Name,
+				isClusterRole: false,
+			}
+			if _, ok := w.r[newRole]; !ok {
+				w.r[newRole] = struct{}{}
+			}
+
+		}
+	}
+}
+
 func (w *whoCan) getClusterRoles() error {
 	crl, err := w.client.RbacV1().ClusterRoles().List(metav1.ListOptions{})
 	if err != nil {
@@ -91,46 +127,62 @@ func (w *whoCan) getClusterRoles() error {
 	return nil
 }
 
-func (w *whoCan) filterRoles(rl *rbacv1.RoleList) {
-	// Only interested in Roles that relate to the verbs and resources we care about
-	for _, item := range rl.Items {
-		// Roles contain PolicyRules
+func (w *whoCan) filterClusterRoles(roles *rbacv1.ClusterRoleList) {
+	for _, item := range roles.Items {
 		for _, rule := range item.Rules {
-			w.policyRuleMatch(rule, item.Name, false)
-		}
-	}
-}
+			if !w.policyMatches(rule) {
+				glog.V(3).Infof("ClusterRole [%s] doesn't match policy filter", item.Name)
+				continue
+			}
 
-func (w *whoCan) filterClusterRoles(rl *rbacv1.ClusterRoleList) {
-	// Only interested in ClusterRoles that relate to the verbs and resources we care about
-	for _, item := range rl.Items {
-		glog.V(3).Info(fmt.Sprintf("Cluster Role: %s", item.Name))
-		// Roles contain PolicyRules
-		for _, rule := range item.Rules {
-			w.policyRuleMatch(rule, item.Name, true)
-		}
-	}
-}
-
-func (w *whoCan) policyRuleMatch(rule rbacv1.PolicyRule, roleName string, isClusterRole bool) {
-	glog.V(3).Info(fmt.Sprintf("  Rule: %v", rule))
-	for _, resource := range rule.Resources {
-		if resource == w.resource || resource == rbacv1.ResourceAll {
-			glog.V(2).Info(fmt.Sprintf("  Resource match %s in role %s", resource, roleName))
-			for _, verb := range rule.Verbs {
-				if verb == w.verb || verb == rbacv1.VerbAll {
-					glog.V(2).Info(fmt.Sprintf("    Verb match %s in role %s", verb, roleName))
-					newRole := role{
-						name:          roleName,
-						isClusterRole: isClusterRole,
-					}
-					if _, ok := w.r[newRole]; !ok {
-						w.r[newRole] = struct{}{}
-					}
-				}
+			newRole := role{
+				name:          item.Name,
+				isClusterRole: true,
+			}
+			if _, ok := w.r[newRole]; !ok {
+				w.r[newRole] = struct{}{}
 			}
 		}
 	}
+}
+
+func (w *whoCan) policyMatches(rule rbacv1.PolicyRule) bool {
+	return w.matchesVerb(rule) &&
+		w.matchesResource(rule) &&
+		w.matchesResourceName(rule)
+}
+
+func (w *whoCan) matchesVerb(rule rbacv1.PolicyRule) bool {
+	for _, verb := range rule.Verbs {
+		if verb == rbacv1.VerbAll || verb == w.verb {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *whoCan) matchesResource(rule rbacv1.PolicyRule) bool {
+	for _, resource := range rule.Resources {
+		if resource == rbacv1.ResourceAll || resource == w.resource {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *whoCan) matchesResourceName(rule rbacv1.PolicyRule) bool {
+	if w.resourceName == "" {
+		return true
+	}
+	if len(rule.ResourceNames) == 0 {
+		return true
+	}
+	for _, name := range rule.ResourceNames {
+		if name == w.resourceName {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *whoCan) getRoleBindings() (roleBindings []rbacv1.RoleBinding, err error) {
@@ -181,8 +233,13 @@ func (w *whoCan) output(roleBindings []rbacv1.RoleBinding, clusterRoleBindings [
 	wr := new(tabwriter.Writer)
 	wr.Init(os.Stdout, 0, 8, 2, ' ', 0)
 
+	resourceName := ""
+	if w.resourceName != "" {
+		resourceName = " " + w.resourceName
+	}
+
 	if len(roleBindings) == 0 {
-		fmt.Printf("No subjects found with permissions to %s %s assigned through RoleBindings\n", w.verb, w.resource)
+		fmt.Printf("No subjects found with permissions to %s %s%s assigned through RoleBindings\n", w.verb, w.resource, resourceName)
 	} else {
 		fmt.Fprintln(wr, "ROLEBINDING\tNAMESPACE\tSUBJECT\tTYPE\tSA-NAMESPACE")
 		for _, rb := range roleBindings {
@@ -195,7 +252,7 @@ func (w *whoCan) output(roleBindings []rbacv1.RoleBinding, clusterRoleBindings [
 	fmt.Fprintln(wr)
 
 	if len(clusterRoleBindings) == 0 {
-		fmt.Printf("No subjects found with permissions to %s %s assigned through ClusterRoleBindings\n", w.verb, w.resource)
+		fmt.Printf("No subjects found with permissions to %s %s%s assigned through ClusterRoleBindings\n", w.verb, w.resource, resourceName)
 	} else {
 		fmt.Fprintln(wr, "CLUSTERROLEBINDING\tSUBJECT\tTYPE\tSA-NAMESPACE")
 		for _, rb := range clusterRoleBindings {

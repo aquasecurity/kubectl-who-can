@@ -8,5 +8,4 @@ $(BINARY): $(SOURCES)
 	GOOS=$(TARGET_OS) go build -o $(BINARY) .
 
 tests:
-	go test -race -timeout 30s -cover ./cmd ./check
-
+	go test -v -race -timeout 30s -cover ./...
