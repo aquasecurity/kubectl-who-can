@@ -1,3 +1,6 @@
 dist
 release
 kubectl-who-can
+
+# GoLand / IntelliJ IDEA project config files
+.idea/
