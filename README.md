@@ -1,3 +1,6 @@
+[![Build Status](https://travis-ci.org/aquasecurity/kubectl-who-can.svg?branch=master)](https://travis-ci.org/aquasecurity/kubectl-who-can)
+[![codecov.io](https://codecov.io/github/aquasecurity/kubectl-who-can/branch/master/graph/badge.svg)](https://codecov.io/github/aquasecurity/kubectl-who-can)
+
 # kubectl-who-can
 [WIP] show who has permissions to &lt;verb> &lt;resources> in kubernetes
 
