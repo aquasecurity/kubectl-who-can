@@ -2,5 +2,7 @@ dist
 release
 kubectl-who-can
 
+coverage.txt
+
 # GoLand / IntelliJ IDEA project config files
 .idea/

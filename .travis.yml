@@ -1,0 +1,20 @@
+language: go
+
+env:
+  - GO111MODULE=on
+
+go:
+  - 1.12.x
+
+git:
+  depth: 1
+
+notifications:
+  email: false
+
+script:
+  - go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+  - go build -o kubectl-who-can main.go
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
