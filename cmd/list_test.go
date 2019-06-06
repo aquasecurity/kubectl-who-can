@@ -111,7 +111,7 @@ func TestWhoCan_validateNamespace(t *testing.T) {
 
 }
 
-func TestWhoCan_policyMatches(t *testing.T) {
+func TestWhoCan_policyRuleMatches(t *testing.T) {
 
 	data := []struct {
 		name string

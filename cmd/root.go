@@ -58,11 +58,52 @@ var RootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		warnings, err := checkAPIAccess(NewAPIAccessChecker(w.client))
+		if err != nil {
+			fmt.Printf("Error checking API access: %v\n", err)
+			os.Exit(1)
+		}
+		printAPIAccessWarnings(warnings)
+
 		if err := w.do(); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
+}
+
+func checkAPIAccess(checker APIAccessChecker) ([]string, error) {
+	var warnings []string
+	checks := []struct {
+		verb     string
+		resource string
+	}{
+		{verb: "list", resource: "roles"},
+		{verb: "list", resource: "rolebindings"},
+		{verb: "list", resource: "clusterroles"},
+		{verb: "list", resource: "clusterrolebindings"},
+	}
+	for _, check := range checks {
+		allowed, err := checker.IsAllowedTo(check.verb, check.resource)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			warnings = append(warnings, fmt.Sprintf("The user is not allowed to %s %s", check.verb, check.resource))
+		}
+	}
+
+	return warnings, nil
+}
+
+func printAPIAccessWarnings(warnings []string) {
+	if len(warnings) > 0 {
+		fmt.Println("Warning: The list might not be complete due to missing permission(s):")
+		for _, warning := range warnings {
+			fmt.Printf("  %s\n", warning)
+		}
+		fmt.Println()
+	}
 }
 
 func init() {
