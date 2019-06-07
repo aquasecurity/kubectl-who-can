@@ -34,7 +34,7 @@ func TestMatch(t *testing.T) {
 	}
 }
 
-func TestWhoCan_ValidateNamespace(t *testing.T) {
+func TestWhoCan_validateNamespace(t *testing.T) {
 
 	t.Run("Should return error when getting namespace fails", func(t *testing.T) {
 		// given
@@ -108,5 +108,92 @@ func TestWhoCan_ValidateNamespace(t *testing.T) {
 		// then
 		assert.NoError(t, err)
 	})
+
+}
+
+func TestWhoCan_policyMatches(t *testing.T) {
+
+	data := []struct {
+		name string
+
+		verb         string
+		resource     string
+		resourceName string
+
+		rule rbacv1.PolicyRule
+
+		matches bool
+	}{
+		{
+			name: "scenario1",
+			verb: "get", resource: "service", resourceName: "",
+			rule: rbacv1.PolicyRule{
+				Verbs:     []string{"get", "list"},
+				Resources: []string{"service"},
+			},
+			matches: true,
+		},
+		{
+			name: "scenario2",
+			verb: "get", resource: "service", resourceName: "",
+			rule: rbacv1.PolicyRule{
+				Verbs:     []string{"get", "list"},
+				Resources: []string{"*"},
+			},
+			matches: true,
+		},
+		{
+			name: "scenario3",
+			verb: "get", resource: "service", resourceName: "",
+			rule: rbacv1.PolicyRule{
+				Verbs:     []string{"*"},
+				Resources: []string{"service"},
+			},
+			matches: true,
+		},
+		{
+			name: "scenario4",
+			verb: "get", resource: "service", resourceName: "mongodb",
+			rule: rbacv1.PolicyRule{
+				Verbs:     []string{"get", "list"},
+				Resources: []string{"service"},
+			},
+			matches: true,
+		},
+		{
+			name: "scenario5",
+			verb: "get", resource: "service", resourceName: "mongodb",
+			rule: rbacv1.PolicyRule{
+				Verbs:         []string{"get", "list"},
+				Resources:     []string{"service"},
+				ResourceNames: []string{"mongodb", "nginx"},
+			},
+			matches: true,
+		},
+		{
+			name: "scenario6",
+			verb: "get", resource: "service", resourceName: "mongodb",
+			rule: rbacv1.PolicyRule{
+				Verbs:         []string{"get", "list"},
+				Resources:     []string{"service"},
+				ResourceNames: []string{"nginx"},
+			},
+			matches: false,
+		},
+	}
+
+	for _, tt := range data {
+		t.Run(tt.name, func(t *testing.T) {
+
+			wc := whoCan{
+				verb:         tt.verb,
+				resource:     tt.resource,
+				resourceName: tt.resourceName,
+			}
+			matches := wc.policyRuleMatches(tt.rule)
+
+			assert.Equal(t, tt.matches, matches)
+		})
+	}
 
 }
