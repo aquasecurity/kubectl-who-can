@@ -100,7 +100,7 @@ func (w *whoCan) getRoles() error {
 func (w *whoCan) filterRoles(roles *rbacv1.RoleList) {
 	for _, item := range roles.Items {
 		for _, rule := range item.Rules {
-			if !w.policyMatches(rule) {
+			if !w.policyRuleMatches(rule) {
 				glog.V(3).Infof("Role [%s] doesn't match policy filter", item.Name)
 				continue
 			}
@@ -130,7 +130,7 @@ func (w *whoCan) getClusterRoles() error {
 func (w *whoCan) filterClusterRoles(roles *rbacv1.ClusterRoleList) {
 	for _, item := range roles.Items {
 		for _, rule := range item.Rules {
-			if !w.policyMatches(rule) {
+			if !w.policyRuleMatches(rule) {
 				glog.V(3).Infof("ClusterRole [%s] doesn't match policy filter", item.Name)
 				continue
 			}
@@ -146,7 +146,7 @@ func (w *whoCan) filterClusterRoles(roles *rbacv1.ClusterRoleList) {
 	}
 }
 
-func (w *whoCan) policyMatches(rule rbacv1.PolicyRule) bool {
+func (w *whoCan) policyRuleMatches(rule rbacv1.PolicyRule) bool {
 	return w.matchesVerb(rule) &&
 		w.matchesResource(rule) &&
 		w.matchesResourceName(rule)

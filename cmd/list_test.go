@@ -190,7 +190,7 @@ func TestWhoCan_policyMatches(t *testing.T) {
 				resource:     tt.resource,
 				resourceName: tt.resourceName,
 			}
-			matches := wc.policyMatches(tt.rule)
+			matches := wc.policyRuleMatches(tt.rule)
 
 			assert.Equal(t, tt.matches, matches)
 		})
