@@ -2,21 +2,27 @@ before:
   hooks:
     - go mod download
 builds:
-- env:
-  - CGO_ENABLED=0
-  ignore:
-    - goos: darwin
-      goarch: 386
-    - goos: linux
-      goarch: arm
-      goarm: 7
-archive:
-  replacements:
-    darwin: Darwin
-    linux: Linux
-    windows: Windows
-    386: i386
-    amd64: x86_64
+  - # Path to main.go file or main package.
+    main: ./main.go
+    # Custom environment variables to be set during the builds.
+    env:
+      - CGO_ENABLED=0
+    # GOOS list to build for.
+    goos:
+      - darwin
+      - linux
+      - windows
+    # GOARCH to build for.
+    goarch:
+      - amd64
+archives:
+  - # Archive name template
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    replacements:
+      amd64: x86_64
+    format_overrides:
+      - goos: windows
+        format: zip
 checksum:
   name_template: 'checksums.txt'
 snapshot:
@@ -25,5 +31,6 @@ changelog:
   sort: asc
   filters:
     exclude:
-    - '^docs:'
-    - '^test:'
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
