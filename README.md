@@ -1,5 +1,7 @@
-[![Build Status](https://travis-ci.org/aquasecurity/kubectl-who-can.svg?branch=master)](https://travis-ci.org/aquasecurity/kubectl-who-can)
-[![codecov.io](https://codecov.io/github/aquasecurity/kubectl-who-can/branch/master/graph/badge.svg)](https://codecov.io/github/aquasecurity/kubectl-who-can)
+[![GitHub release][release-img]][release]
+[![Build Status][ci-img]][ci]
+[![Coverage Status][cov-img]][cov]
+[![Go Report Card][report-card-img]][report-card]
 
 # kubectl-who-can
 [WIP] show who has permissions to &lt;verb> &lt;resources> in kubernetes
@@ -40,3 +42,15 @@ The `kubectl-who-can` binary will be in `/usr/local/bin`.
 
 * Make it a kubectl plugin (for now it's a standalone executable)
 * Alert if user doesn't have access to all namespaces, roles, clusterroles or bindings (as info won't be complete)
+
+[release-img]: https://img.shields.io/github/release/aquasecurity/kubectl-who-can.svg
+[release]: https://github.com/aquasecurity/kubectl-who-can/releases
+
+[ci-img]: https://travis-ci.org/aquasecurity/kubectl-who-can.svg?branch=master
+[ci]: https://travis-ci.org/aquasecurity/kubectl-who-can
+
+[cov-img]: https://codecov.io/github/aquasecurity/kubectl-who-can/branch/master/graph/badge.svg
+[cov]: https://codecov.io/github/aquasecurity/kubectl-who-can
+
+[report-card-img]: https://goreportcard.com/badge/github.com/aquasecurity/kubectl-who-can
+[report-card]: https://goreportcard.com/report/github.com/aquasecurity/kubectl-who-can
