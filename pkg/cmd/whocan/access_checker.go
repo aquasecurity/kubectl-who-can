@@ -1,4 +1,4 @@
-package cmd
+package whocan
 
 import (
 	authzv1 "k8s.io/api/authorization/v1"

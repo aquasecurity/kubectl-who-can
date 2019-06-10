@@ -1,4 +1,4 @@
-package cmd
+package whocan
 
 import (
 	"errors"
@@ -14,31 +14,31 @@ import (
 func TestIsAllowed(t *testing.T) {
 
 	data := []struct {
-		name         string
+		scenario     string
 		reactionFunc k8stesting.ReactionFunc
 
 		allowed bool
 		err     error
 	}{
 		{
-			name:         "Should return true when SSAR's allowed property is true",
+			scenario:     "Should return true when SSAR's allowed property is true",
 			reactionFunc: newSelfSubjectAccessReviewsReactionFunc(true, nil),
 			allowed:      true,
 		},
 		{
-			name:         "Should return false when SSAR's allowed property is false",
+			scenario:     "Should return false when SSAR's allowed property is false",
 			reactionFunc: newSelfSubjectAccessReviewsReactionFunc(false, nil),
 			allowed:      false,
 		},
 		{
-			name:         "Should return error when API request fails",
+			scenario:     "Should return error when API request fails",
 			reactionFunc: newSelfSubjectAccessReviewsReactionFunc(false, errors.New("api is down")),
 			err:          errors.New("api is down"),
 		},
 	}
 
 	for _, tt := range data {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.scenario, func(t *testing.T) {
 			// given
 			client := newClient(tt.reactionFunc)
 

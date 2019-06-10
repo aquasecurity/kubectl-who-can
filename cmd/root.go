@@ -4,7 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	v1 "k8s.io/api/core/v1"
+	"github.com/aquasecurity/kubectl-who-can/pkg/cmd/whocan"
+	"k8s.io/api/core/v1"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -20,14 +21,14 @@ var RootCmd = &cobra.Command{
 	Use:   "kubectl-who-can VERB TYPE [NAME]",
 	Short: "who-can shows which users, groups and service accounts can perform a given action",
 	Long:  "who-can shows which users, groups and service accounts can perform a given verb on a given resource type",
-	Example: `  # List who can get pods in all namespaces:
-  kubectl-who-can get pods
+	Example: `  # List who can get pods in any namespace
+  kubectl who-can get pods
 
-  # List who can create services in the foo namespace:
-  kubectl-who-can create services -n foo
+  # List who can create services in namespace "foo"
+  kubectl who-can create services -n foo
 
-  # List who can get the mongodb service in the bar namespace:
-  kubectl-who-can get services mongodb --namespace bar`,
+  # List who can get the service named "mongodb" in namespace "bar"
+  kubectl who-can get svc mongodb --namespace bar`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 2 {
 			return errors.New("please specify at least a verb and a resource type")
@@ -54,14 +55,18 @@ var RootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		w.client, err = kubernetes.NewForConfig(kubeconfig)
+		client, err := kubernetes.NewForConfig(kubeconfig)
 		if err != nil {
 			fmt.Printf("Error creating client: %v\n", err)
 			os.Exit(1)
 		}
 
 		// TODO Introduce proper dependency injection with NewCmdWhoCan(NewAPIAccessChecker(client), ...)
-		w.accessChecker = NewAPIAccessChecker(w.client.AuthorizationV1().SelfSubjectAccessReviews())
+		w.namespaces = client.CoreV1().Namespaces()
+		w.rbac = client.RbacV1()
+		w.accessChecker = whocan.NewAPIAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews())
+		w.namespaceValidator = whocan.NewNamespaceValidator(client.CoreV1().Namespaces())
+		w.resourceResolver = whocan.NewResourceResolver(client.Discovery())
 
 		if err := w.do(); err != nil {
 			fmt.Printf("Error: %v\n", err)
