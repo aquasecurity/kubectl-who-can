@@ -1,20 +1,24 @@
 language: go
-
 env:
-  - GO111MODULE=on
-
+  matrix:
+    - GO111MODULE=on
+  global:
+    secure: utJI+HwXlw0hW28cydKdHLc5CRM8xoal9YGbo0hkHTgiiRcJuavT55/wwJQ6tSvrrEjMwD3g5aSzS1UifhYx+XwMvishJ7gGa1vFU7yz80YPPoEJzMKEHIkW9Eac8f8QnBgl4yNm8tdijUaj851DCJ8dg7WHUMAKAEY9/gYOi4f6hzXI4abHHx30ppbGqM3/qnst83b8i95nTC3c8X0MYRW9TH93iQBORDbj9XQKFQBiIbpQ/sm5iBQgIdKDsPcNaRzvMxwJk2tVb5DrlnMbxIfvBc8axbTvIdvHgRjZEMykooMhC6M24yJO7f9BEy86zkcgL+TyMQ6U7kf183xM/C3Jrcdn49GX+lyJcOOHjUmkDCgQgxF/YYML8uytXrfd3Ghsf4ap+Xnm6UxXz9OF3FDkLdGzgExr3HwZ8PTESNt80TEWJWI/vtIndId0Ad32mXp/FX5iIsQPe343U8xXPM/z+/pWsS4clCQDC9MXaIK1i4ZVfchTz7dyVHeQJMYZzSbILNPQrgkY9moZA/ilsBMMOT5myjEqq++1ktOlnBK9Gyue5Xt7XyAgAJlHTDIm8PQVwEadCIr/XJcLGptTmPSNOjft91jobnwlxlnfRK+m/KsUI6FY6ZNBGiQ8oVVPk6pCSghBxViQndqCO8vH3zjbRRQmE6SDrrpbnE2kpTE=
 go:
   - 1.12.x
-
 git:
   depth: 1
-
 notifications:
   email: false
-
 script:
   - go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
   - go build -o kubectl-who-can main.go
-
 after_success:
   - bash <(curl -s https://codecov.io/bash)
+deploy:
+  - provider: script
+    skip_cleanup: true
+    script: curl -sL https://git.io/goreleaser | bash
+    on:
+      tags: true
+      condition: "$TRAVIS_OS_NAME = linux"
