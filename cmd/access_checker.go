@@ -2,36 +2,35 @@ package cmd
 
 import (
 	authzv1 "k8s.io/api/authorization/v1"
-	"k8s.io/client-go/kubernetes"
+	v1 "k8s.io/client-go/kubernetes/typed/authorization/v1"
 )
 
 type APIAccessChecker interface {
-	IsAllowedTo(verb, resource string) (bool, error)
+	IsAllowedTo(verb, resource, namespace string) (bool, error)
 }
 
 type accessChecker struct {
-	client kubernetes.Interface
+	client v1.SelfSubjectAccessReviewInterface
 }
 
-func NewAPIAccessChecker(client kubernetes.Interface) APIAccessChecker {
+func NewAPIAccessChecker(client v1.SelfSubjectAccessReviewInterface) APIAccessChecker {
 	return &accessChecker{
 		client: client,
 	}
 }
 
-func (ac *accessChecker) IsAllowedTo(verb, resource string) (bool, error) {
+func (ac *accessChecker) IsAllowedTo(verb, resource, namespace string) (bool, error) {
 	sar := &authzv1.SelfSubjectAccessReview{
 		Spec: authzv1.SelfSubjectAccessReviewSpec{
 			ResourceAttributes: &authzv1.ResourceAttributes{
-				Verb:     verb,
-				Resource: resource,
-				// TODO Do we set the Namespace property if --namespace flag is passed to the CLI?
-				Namespace: "",
+				Verb:      verb,
+				Resource:  resource,
+				Namespace: namespace,
 			},
 		},
 	}
 
-	sar, err := ac.client.AuthorizationV1().SelfSubjectAccessReviews().Create(sar)
+	sar, err := ac.client.Create(sar)
 	if err != nil {
 		return false, err
 	}
