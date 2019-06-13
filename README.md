@@ -41,7 +41,6 @@ The `kubectl-who-can` binary will be in `/usr/local/bin`.
 ## TODO
 
 * Make it a kubectl plugin (for now it's a standalone executable)
-* Alert if user doesn't have access to all namespaces, roles, clusterroles or bindings (as info won't be complete)
 
 [release-img]: https://img.shields.io/github/release/aquasecurity/kubectl-who-can.svg
 [release]: https://github.com/aquasecurity/kubectl-who-can/releases

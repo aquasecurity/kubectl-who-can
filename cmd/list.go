@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
@@ -26,14 +27,18 @@ type whoCan struct {
 	verb         string
 	resource     string
 	resourceName string
-	client       kubernetes.Interface
-	r            roles
+	namespace    string
+
+	client        kubernetes.Interface
+	accessChecker APIAccessChecker
+
+	r roles
 }
 
-func (w *whoCan) validateNamespace(name string) error {
+func (w *whoCan) validateNamespace() error {
 
-	if name != v1.NamespaceAll {
-		ns, err := w.client.CoreV1().Namespaces().Get(name, metav1.GetOptions{})
+	if w.namespace != v1.NamespaceAll {
+		ns, err := w.client.CoreV1().Namespaces().Get(w.namespace, metav1.GetOptions{})
 		if err != nil {
 			if statusErr, ok := err.(*errors.StatusError); ok &&
 				statusErr.Status().Reason == metav1.StatusReasonNotFound {
@@ -49,9 +54,14 @@ func (w *whoCan) validateNamespace(name string) error {
 }
 
 func (w *whoCan) do() error {
-	err := w.validateNamespace(namespace)
+	err := w.validateNamespace()
 	if err != nil {
-		return fmt.Errorf("validating namespace: %s: %v", namespace, err)
+		return fmt.Errorf("validating namespace: %s: %v", w.namespace, err)
+	}
+
+	warnings, err := w.checkAPIAccess()
+	if err != nil {
+		return fmt.Errorf("checking API access: %v\n", err)
 	}
 
 	w.r = make(map[role]struct{}, 10)
@@ -80,15 +90,76 @@ func (w *whoCan) do() error {
 		return fmt.Errorf("getting ClusterRoleBindings: %v", err)
 	}
 
+	// Output warnings
+	w.printAPIAccessWarnings(os.Stdout, warnings)
+
 	// Output the results
 	w.output(roleBindings, clusterRoleBindings)
 
-	// TODO!! Check the user's own permissions to see if we might be missing something in the output
 	return nil
 }
 
+func (w *whoCan) checkAPIAccess() ([]string, error) {
+	type check struct {
+		verb      string
+		resource  string
+		namespace string
+	}
+
+	var checks []check
+	var warnings []string
+
+	// Determine which checks need to be executed.
+	if w.namespace == "" {
+		checks = append(checks, check{"list", "namespaces", ""})
+
+		nsList, err := w.client.CoreV1().Namespaces().List(metav1.ListOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("listing namespaces: %v", err)
+		}
+		for _, ns := range nsList.Items {
+			checks = append(checks, check{"list", "roles", ns.Name})
+			checks = append(checks, check{"list", "rolebindings", ns.Name})
+		}
+	} else {
+		checks = append(checks, check{"list", "roles", w.namespace})
+		checks = append(checks, check{"list", "rolebindings", w.namespace})
+	}
+
+	// Actually run the checks and collect warnings.
+	for _, check := range checks {
+		allowed, err := w.accessChecker.IsAllowedTo(check.verb, check.resource, check.namespace)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			var msg string
+
+			if check.namespace == "" {
+				msg = fmt.Sprintf("The user is not allowed to %s %s", check.verb, check.resource)
+			} else {
+				msg = fmt.Sprintf("The user is not allowed to %s %s in the %s namespace", check.verb, check.resource, check.namespace)
+			}
+
+			warnings = append(warnings, msg)
+		}
+	}
+
+	return warnings, nil
+}
+
+func (w *whoCan) printAPIAccessWarnings(out io.Writer, warnings []string) {
+	if len(warnings) > 0 {
+		_, _ = fmt.Fprintln(out, "Warning: The list might not be complete due to missing permission(s):")
+		for _, warning := range warnings {
+			_, _ = fmt.Fprintf(out, "\t%s\n", warning)
+		}
+		_, _ = fmt.Fprintln(out)
+	}
+}
+
 func (w *whoCan) getRoles() error {
-	rl, err := w.client.RbacV1().Roles(namespace).List(metav1.ListOptions{})
+	rl, err := w.client.RbacV1().Roles(w.namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -171,7 +242,7 @@ func (w *whoCan) matchesResource(rule rbacv1.PolicyRule) bool {
 }
 
 func (w *whoCan) matchesResourceName(rule rbacv1.PolicyRule) bool {
-	if w.resourceName == "" {
+	if w.resourceName == "" && len(rule.ResourceNames) == 0 {
 		return true
 	}
 	if len(rule.ResourceNames) == 0 {
@@ -186,7 +257,7 @@ func (w *whoCan) matchesResourceName(rule rbacv1.PolicyRule) bool {
 }
 
 func (w *whoCan) getRoleBindings() (roleBindings []rbacv1.RoleBinding, err error) {
-	rbl, err := w.client.RbacV1().RoleBindings(namespace).List(metav1.ListOptions{})
+	rbl, err := w.client.RbacV1().RoleBindings(w.namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return
 	}

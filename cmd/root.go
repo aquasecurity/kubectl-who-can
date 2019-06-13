@@ -12,7 +12,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-var namespace string
+// Deprecated TODO At some point we should get rid of global vars and init func.
+var namespaceFlag string
 
 // RootCmd is the command we're going to run
 var RootCmd = &cobra.Command{
@@ -26,7 +27,7 @@ var RootCmd = &cobra.Command{
   kubectl-who-can create services -n foo
 
   # List who can get the mongodb service in the bar namespace:
-  kubectl-who-can get service mongodb --namespace bar`,
+  kubectl-who-can get services mongodb --namespace bar`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 2 {
 			return errors.New("please specify at least a verb and a resource type")
@@ -40,6 +41,7 @@ var RootCmd = &cobra.Command{
 		if len(args) > 2 {
 			w.resourceName = args[2]
 		}
+		w.namespace = namespaceFlag
 
 		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			clientcmd.NewDefaultClientConfigLoadingRules(),
@@ -58,6 +60,9 @@ var RootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		// TODO Introduce proper dependency injection with NewCmdWhoCan(NewAPIAccessChecker(client), ...)
+		w.accessChecker = NewAPIAccessChecker(w.client.AuthorizationV1().SelfSubjectAccessReviews())
+
 		if err := w.do(); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
@@ -66,7 +71,7 @@ var RootCmd = &cobra.Command{
 }
 
 func init() {
-	RootCmd.PersistentFlags().StringVarP(&namespace, "namespace", "n", v1.NamespaceAll,
+	RootCmd.PersistentFlags().StringVarP(&namespaceFlag, "namespace", "n", v1.NamespaceAll,
 		"if present, the namespace scope for the CLI request")
 
 	flag.CommandLine.VisitAll(func(goflag *flag.Flag) {
