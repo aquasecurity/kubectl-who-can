@@ -2,11 +2,10 @@ package cmd
 
 import (
 	"bytes"
-	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	v1 "k8s.io/api/core/v1"
-	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	clientTesting "k8s.io/client-go/testing"
@@ -46,87 +45,6 @@ func TestMatch(t *testing.T) {
 	}
 }
 
-func TestWhoCan_validateNamespace(t *testing.T) {
-
-	t.Run("Should return error when getting namespace fails", func(t *testing.T) {
-		// given
-		client := fake.NewSimpleClientset()
-		client.Fake.PrependReactor("get", "namespaces", func(action clientTesting.Action) (bool, runtime.Object, error) {
-			return true, nil, errors.New("boom")
-		})
-		// and
-		wc := whoCan{
-			namespace: "foo",
-			client:    client,
-		}
-		// when
-		err := wc.validateNamespace()
-		// then
-		assert.EqualError(t, err, "getting namespace: boom")
-	})
-
-	t.Run("Should return error when namespace does not exist", func(t *testing.T) {
-		// given
-		client := fake.NewSimpleClientset()
-		// and
-		wc := whoCan{
-			namespace: "nonexistent",
-			client:    client,
-		}
-		// when
-		err := wc.validateNamespace()
-		// then
-		assert.EqualError(t, err, "not found")
-	})
-
-	t.Run("Should return error when namespace is not active", func(t *testing.T) {
-		// given
-		client := fake.NewSimpleClientset()
-		// and
-		client.Fake.PrependReactor("get", "namespaces", func(action clientTesting.Action) (bool, runtime.Object, error) {
-			obj := &v1.Namespace{
-				Status: v1.NamespaceStatus{
-					Phase: v1.NamespaceTerminating,
-				},
-			}
-			return true, obj, nil
-		})
-		// and
-		wc := whoCan{
-			namespace: "foo",
-			client:    client,
-		}
-		// when
-		err := wc.validateNamespace()
-		// then
-		assert.EqualError(t, err, "invalid status: Terminating")
-	})
-
-	t.Run("Should return nil when namespace is active", func(t *testing.T) {
-		// given
-		client := fake.NewSimpleClientset()
-		// and
-		client.Fake.PrependReactor("get", "namespaces", func(action clientTesting.Action) (bool, runtime.Object, error) {
-			obj := &v1.Namespace{
-				Status: v1.NamespaceStatus{
-					Phase: v1.NamespaceActive,
-				},
-			}
-			return true, obj, nil
-		})
-		// and
-		wc := whoCan{
-			namespace: "foo",
-			client:    client,
-		}
-		// when
-		err := wc.validateNamespace()
-		// then
-		assert.NoError(t, err)
-	})
-
-}
-
 func TestWhoCan_checkAPIAccess(t *testing.T) {
 	const (
 		FooNs = "foo"
@@ -142,13 +60,13 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 
 	client := fake.NewSimpleClientset()
 	client.Fake.PrependReactor("list", "namespaces", func(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
-		list := &v1.NamespaceList{
-			Items: []v1.Namespace{
+		list := &corev1.NamespaceList{
+			Items: []corev1.Namespace{
 				{
-					ObjectMeta: v12.ObjectMeta{Name: FooNs},
+					ObjectMeta: metav1.ObjectMeta{Name: FooNs},
 				},
 				{
-					ObjectMeta: v12.ObjectMeta{Name: BarNs},
+					ObjectMeta: metav1.ObjectMeta{Name: BarNs},
 				},
 			},
 		}
@@ -166,10 +84,10 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 	}{
 		{
 			scenario:  "A",
-			namespace: v1.NamespaceAll,
+			namespace: corev1.NamespaceAll,
 			permissions: []permission{
 				// Permissions to list all namespaces
-				{verb: "list", resource: "namespaces", namespace: v1.NamespaceAll, allowed: false},
+				{verb: "list", resource: "namespaces", namespace: corev1.NamespaceAll, allowed: false},
 				// Permissions in the foo namespace
 				{verb: "list", resource: "roles", namespace: FooNs, allowed: true},
 				{verb: "list", resource: "rolebindings", namespace: FooNs, allowed: true},
@@ -208,7 +126,7 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 
 			wc := &whoCan{
 				namespace:     tt.namespace,
-				client:        client,
+				namespaces:    client.CoreV1().Namespaces(),
 				accessChecker: checker,
 			}
 
@@ -228,9 +146,8 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 func TestWhoCan_printAPIAccessWarnings(t *testing.T) {
 
 	data := []struct {
-		scenario string
-		warnings []string
-
+		scenario       string
+		warnings       []string
 		expectedOutput string
 	}{
 		{
@@ -263,7 +180,7 @@ func TestWhoCan_printAPIAccessWarnings(t *testing.T) {
 func TestWhoCan_policyRuleMatches(t *testing.T) {
 
 	data := []struct {
-		name string
+		scenario string
 
 		verb         string
 		resource     string
@@ -274,8 +191,8 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 		matches bool
 	}{
 		{
-			name: "scenario1",
-			verb: "get", resource: "service", resourceName: "",
+			scenario: "A",
+			verb:     "get", resource: "service", resourceName: "",
 			rule: rbacv1.PolicyRule{
 				Verbs:     []string{"get", "list"},
 				Resources: []string{"service"},
@@ -283,8 +200,8 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 			matches: true,
 		},
 		{
-			name: "scenario2",
-			verb: "get", resource: "service", resourceName: "",
+			scenario: "B",
+			verb:     "get", resource: "service", resourceName: "",
 			rule: rbacv1.PolicyRule{
 				Verbs:     []string{"get", "list"},
 				Resources: []string{"*"},
@@ -292,8 +209,8 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 			matches: true,
 		},
 		{
-			name: "scenario3",
-			verb: "get", resource: "service", resourceName: "",
+			scenario: "C",
+			verb:     "get", resource: "service", resourceName: "",
 			rule: rbacv1.PolicyRule{
 				Verbs:     []string{"*"},
 				Resources: []string{"service"},
@@ -301,8 +218,8 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 			matches: true,
 		},
 		{
-			name: "scenario4",
-			verb: "get", resource: "service", resourceName: "mongodb",
+			scenario: "D",
+			verb:     "get", resource: "service", resourceName: "mongodb",
 			rule: rbacv1.PolicyRule{
 				Verbs:     []string{"get", "list"},
 				Resources: []string{"service"},
@@ -310,8 +227,8 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 			matches: true,
 		},
 		{
-			name: "scenario5",
-			verb: "get", resource: "service", resourceName: "mongodb",
+			scenario: "E",
+			verb:     "get", resource: "service", resourceName: "mongodb",
 			rule: rbacv1.PolicyRule{
 				Verbs:         []string{"get", "list"},
 				Resources:     []string{"service"},
@@ -320,8 +237,8 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 			matches: true,
 		},
 		{
-			name: "scenario6",
-			verb: "get", resource: "service", resourceName: "mongodb",
+			scenario: "F",
+			verb:     "get", resource: "service", resourceName: "mongodb",
 			rule: rbacv1.PolicyRule{
 				Verbs:         []string{"get", "list"},
 				Resources:     []string{"service"},
@@ -330,8 +247,8 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 			matches: false,
 		},
 		{
-			name: "scenario7",
-			verb: "get", resource: "service", resourceName: "",
+			scenario: "G",
+			verb:     "get", resource: "service", resourceName: "",
 			rule: rbacv1.PolicyRule{
 				Verbs:         []string{"get", "list"},
 				Resources:     []string{"service"},
@@ -342,12 +259,14 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 	}
 
 	for _, tt := range data {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.scenario, func(t *testing.T) {
 
 			wc := whoCan{
 				verb:         tt.verb,
 				resource:     tt.resource,
 				resourceName: tt.resourceName,
+
+				apiResource: metav1.APIResource{Name: tt.resource},
 			}
 			matches := wc.policyRuleMatches(tt.rule)
 

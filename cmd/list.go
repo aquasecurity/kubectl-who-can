@@ -2,16 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/aquasecurity/kubectl-who-can/pkg/cmd/whocan"
 	"io"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/kubernetes"
+	clientcore "k8s.io/client-go/kubernetes/typed/core/v1"
+	clientrbac "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"os"
 	"text/tabwriter"
 
 	"github.com/golang/glog"
-	rbacv1 "k8s.io/api/rbac/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	rbac "k8s.io/api/rbac/v1"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
@@ -29,39 +29,30 @@ type whoCan struct {
 	resourceName string
 	namespace    string
 
-	client        kubernetes.Interface
-	accessChecker APIAccessChecker
+	namespaces         clientcore.NamespaceInterface
+	rbac               clientrbac.RbacV1Interface
+	namespaceValidator whocan.NamespaceValidator
+	resourceResolver   whocan.ResourceResolver
+	accessChecker      whocan.APIAccessChecker
 
-	r roles
-}
-
-func (w *whoCan) validateNamespace() error {
-
-	if w.namespace != v1.NamespaceAll {
-		ns, err := w.client.CoreV1().Namespaces().Get(w.namespace, metav1.GetOptions{})
-		if err != nil {
-			if statusErr, ok := err.(*errors.StatusError); ok &&
-				statusErr.Status().Reason == metav1.StatusReasonNotFound {
-				return fmt.Errorf("not found")
-			}
-			return fmt.Errorf("getting namespace: %v", err)
-		}
-		if ns.Status.Phase != v1.NamespaceActive {
-			return fmt.Errorf("invalid status: %v", ns.Status.Phase)
-		}
-	}
-	return nil
+	r           roles
+	apiResource meta.APIResource
 }
 
 func (w *whoCan) do() error {
-	err := w.validateNamespace()
-	if err != nil {
-		return fmt.Errorf("validating namespace: %s: %v", w.namespace, err)
-	}
-
 	warnings, err := w.checkAPIAccess()
 	if err != nil {
-		return fmt.Errorf("checking API access: %v\n", err)
+		return fmt.Errorf("checking API access: %v", err)
+	}
+
+	err = w.namespaceValidator.Validate(w.namespace)
+	if err != nil {
+		return fmt.Errorf("validating namespace: %v", err)
+	}
+
+	w.apiResource, err = w.resourceResolver.Resolve(w.verb, w.resource)
+	if err != nil {
+		return fmt.Errorf("resolving resource: %v", err)
 	}
 
 	w.r = make(map[role]struct{}, 10)
@@ -113,7 +104,7 @@ func (w *whoCan) checkAPIAccess() ([]string, error) {
 	if w.namespace == "" {
 		checks = append(checks, check{"list", "namespaces", ""})
 
-		nsList, err := w.client.CoreV1().Namespaces().List(metav1.ListOptions{})
+		nsList, err := w.namespaces.List(meta.ListOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("listing namespaces: %v", err)
 		}
@@ -159,7 +150,7 @@ func (w *whoCan) printAPIAccessWarnings(out io.Writer, warnings []string) {
 }
 
 func (w *whoCan) getRoles() error {
-	rl, err := w.client.RbacV1().Roles(w.namespace).List(metav1.ListOptions{})
+	rl, err := w.rbac.Roles(w.namespace).List(meta.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -168,7 +159,7 @@ func (w *whoCan) getRoles() error {
 	return nil
 }
 
-func (w *whoCan) filterRoles(roles *rbacv1.RoleList) {
+func (w *whoCan) filterRoles(roles *rbac.RoleList) {
 	for _, item := range roles.Items {
 		for _, rule := range item.Rules {
 			if !w.policyRuleMatches(rule) {
@@ -189,7 +180,7 @@ func (w *whoCan) filterRoles(roles *rbacv1.RoleList) {
 }
 
 func (w *whoCan) getClusterRoles() error {
-	crl, err := w.client.RbacV1().ClusterRoles().List(metav1.ListOptions{})
+	crl, err := w.rbac.ClusterRoles().List(meta.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -198,7 +189,7 @@ func (w *whoCan) getClusterRoles() error {
 	return nil
 }
 
-func (w *whoCan) filterClusterRoles(roles *rbacv1.ClusterRoleList) {
+func (w *whoCan) filterClusterRoles(roles *rbac.ClusterRoleList) {
 	for _, item := range roles.Items {
 		for _, rule := range item.Rules {
 			if !w.policyRuleMatches(rule) {
@@ -217,31 +208,31 @@ func (w *whoCan) filterClusterRoles(roles *rbacv1.ClusterRoleList) {
 	}
 }
 
-func (w *whoCan) policyRuleMatches(rule rbacv1.PolicyRule) bool {
+func (w *whoCan) policyRuleMatches(rule rbac.PolicyRule) bool {
 	return w.matchesVerb(rule) &&
 		w.matchesResource(rule) &&
 		w.matchesResourceName(rule)
 }
 
-func (w *whoCan) matchesVerb(rule rbacv1.PolicyRule) bool {
+func (w *whoCan) matchesVerb(rule rbac.PolicyRule) bool {
 	for _, verb := range rule.Verbs {
-		if verb == rbacv1.VerbAll || verb == w.verb {
+		if verb == rbac.VerbAll || verb == w.verb {
 			return true
 		}
 	}
 	return false
 }
 
-func (w *whoCan) matchesResource(rule rbacv1.PolicyRule) bool {
+func (w *whoCan) matchesResource(rule rbac.PolicyRule) bool {
 	for _, resource := range rule.Resources {
-		if resource == rbacv1.ResourceAll || resource == w.resource {
+		if resource == rbac.ResourceAll || resource == w.apiResource.Name {
 			return true
 		}
 	}
 	return false
 }
 
-func (w *whoCan) matchesResourceName(rule rbacv1.PolicyRule) bool {
+func (w *whoCan) matchesResourceName(rule rbac.PolicyRule) bool {
 	if w.resourceName == "" && len(rule.ResourceNames) == 0 {
 		return true
 	}
@@ -256,8 +247,8 @@ func (w *whoCan) matchesResourceName(rule rbacv1.PolicyRule) bool {
 	return false
 }
 
-func (w *whoCan) getRoleBindings() (roleBindings []rbacv1.RoleBinding, err error) {
-	rbl, err := w.client.RbacV1().RoleBindings(w.namespace).List(metav1.ListOptions{})
+func (w *whoCan) getRoleBindings() (roleBindings []rbac.RoleBinding, err error) {
+	rbl, err := w.rbac.RoleBindings(w.namespace).List(meta.ListOptions{})
 	if err != nil {
 		return
 	}
@@ -272,8 +263,8 @@ func (w *whoCan) getRoleBindings() (roleBindings []rbacv1.RoleBinding, err error
 	return
 }
 
-func (w *whoCan) getClusterRoleBindings() (clusterRoleBindings []rbacv1.ClusterRoleBinding, err error) {
-	rbl, err := w.client.RbacV1().ClusterRoleBindings().List(metav1.ListOptions{})
+func (w *whoCan) getClusterRoleBindings() (clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
+	rbl, err := w.rbac.ClusterRoleBindings().List(meta.ListOptions{})
 	if err != nil {
 		return
 	}
@@ -288,7 +279,7 @@ func (w *whoCan) getClusterRoleBindings() (clusterRoleBindings []rbacv1.ClusterR
 	return
 }
 
-func (r roles) match(roleRef *rbacv1.RoleRef) bool {
+func (r roles) match(roleRef *rbac.RoleRef) bool {
 	tempRole := role{
 		name:          roleRef.Name,
 		isClusterRole: (roleRef.Kind == "ClusterRole"),
@@ -300,7 +291,7 @@ func (r roles) match(roleRef *rbacv1.RoleRef) bool {
 	return ok
 }
 
-func (w *whoCan) output(roleBindings []rbacv1.RoleBinding, clusterRoleBindings []rbacv1.ClusterRoleBinding) {
+func (w *whoCan) output(roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
 	wr := new(tabwriter.Writer)
 	wr.Init(os.Stdout, 0, 8, 2, ' ', 0)
 
