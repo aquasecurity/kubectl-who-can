@@ -1,4 +1,4 @@
-package whocan
+package cmd
 
 import (
 	"fmt"

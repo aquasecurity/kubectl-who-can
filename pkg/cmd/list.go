@@ -1,9 +1,14 @@
 package cmd
 
 import (
+	"errors"
+	"flag"
 	"fmt"
-	"github.com/aquasecurity/kubectl-who-can/pkg/cmd/whocan"
+	"github.com/spf13/cobra"
 	"io"
+	core "k8s.io/api/core/v1"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/kubernetes"
 	clientcore "k8s.io/client-go/kubernetes/typed/core/v1"
 	clientrbac "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"os"
@@ -12,8 +17,6 @@ import (
 	"github.com/golang/glog"
 	rbac "k8s.io/api/rbac/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
 type role struct {
@@ -31,12 +34,81 @@ type whoCan struct {
 
 	namespaces         clientcore.NamespaceInterface
 	rbac               clientrbac.RbacV1Interface
-	namespaceValidator whocan.NamespaceValidator
-	resourceResolver   whocan.ResourceResolver
-	accessChecker      whocan.APIAccessChecker
+	namespaceValidator NamespaceValidator
+	resourceResolver   ResourceResolver
+	accessChecker      APIAccessChecker
 
 	r           roles
 	apiResource meta.APIResource
+}
+
+func NewCmdWhoCan() *cobra.Command {
+	var namespaceFlag string
+
+	configFlags := genericclioptions.NewConfigFlags(true)
+
+	cmd := &cobra.Command{
+		Use:   "kubectl-who-can VERB TYPE [NAME]",
+		Short: "who-can shows which users, groups and service accounts can perform a given action",
+		Long:  "who-can shows which users, groups and service accounts can perform a given verb on a given resource type",
+		Example: `  # List who can get pods in any namespace
+  kubectl who-can get pods
+
+  # List who can create services in namespace "foo"
+  kubectl who-can create services -n foo
+
+  # List who can get the service named "mongodb" in namespace "bar"
+  kubectl who-can get svc mongodb --namespace bar`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 2 {
+				return errors.New("please specify at least a verb and a resource type")
+			}
+			return nil
+		},
+		Run: func(cmd *cobra.Command, args []string) {
+			w := whoCan{}
+			w.verb = args[0]
+			w.resource = args[1]
+			if len(args) > 2 {
+				w.resourceName = args[2]
+			}
+			w.namespace = namespaceFlag
+
+			clientConfig, err := configFlags.ToRESTConfig()
+			if err != nil {
+				fmt.Printf("Error getting config: %v\n", err)
+				os.Exit(1)
+			}
+
+			client, err := kubernetes.NewForConfig(clientConfig)
+			if err != nil {
+				fmt.Printf("Error creating client: %v\n", err)
+				os.Exit(1)
+			}
+
+			// TODO Introduce proper dependency injection with NewCmdWhoCan(NewAPIAccessChecker(client), ...)
+			w.namespaces = client.CoreV1().Namespaces()
+			w.rbac = client.RbacV1()
+			w.accessChecker = NewAPIAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews())
+			w.namespaceValidator = NewNamespaceValidator(client.CoreV1().Namespaces())
+			w.resourceResolver = NewResourceResolver(client.Discovery())
+
+			if err := w.do(); err != nil {
+				fmt.Printf("Error: %v\n", err)
+				os.Exit(1)
+			}
+		},
+	}
+
+	cmd.PersistentFlags().StringVarP(&namespaceFlag, "namespace", "n", core.NamespaceAll,
+		"if present, the namespace scope for the CLI request")
+
+	flag.CommandLine.VisitAll(func(goflag *flag.Flag) {
+		cmd.PersistentFlags().AddGoFlag(goflag)
+	})
+	configFlags.AddFlags(cmd.Flags())
+
+	return cmd
 }
 
 func (w *whoCan) do() error {

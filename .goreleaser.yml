@@ -3,10 +3,11 @@ before:
     - go mod download
 builds:
   - # Path to main.go file or main package.
-    main: ./main.go
+    main: ./cmd/kubectl-who-can.go
     # Custom environment variables to be set during the builds.
     env:
       - CGO_ENABLED=0
+      - GO111MODULE=on
     # GOOS list to build for.
     goos:
       - darwin
