@@ -44,6 +44,7 @@ type whoCan struct {
 
 func NewCmdWhoCan() *cobra.Command {
 	var namespaceFlag string
+	var allNamespaces bool
 
 	configFlags := genericclioptions.NewConfigFlags(true)
 
@@ -66,13 +67,25 @@ func NewCmdWhoCan() *cobra.Command {
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
+			namespace, _, err := configFlags.ToRawKubeConfigLoader().Namespace()
+			if err != nil {
+				fmt.Printf("Error getting namespace from context config: %v\n", err)
+				os.Exit(1)
+			}
+			if namespaceFlag != "" {
+				namespace = namespaceFlag
+			}
+			if allNamespaces {
+				namespace = core.NamespaceAll
+			}
+
 			w := whoCan{}
 			w.verb = args[0]
 			w.resource = args[1]
 			if len(args) > 2 {
 				w.resourceName = args[2]
 			}
-			w.namespace = namespaceFlag
+			w.namespace = namespace
 
 			clientConfig, err := configFlags.ToRESTConfig()
 			if err != nil {
@@ -102,6 +115,8 @@ func NewCmdWhoCan() *cobra.Command {
 
 	cmd.PersistentFlags().StringVarP(&namespaceFlag, "namespace", "n", core.NamespaceAll,
 		"if present, the namespace scope for the CLI request")
+	cmd.PersistentFlags().BoolVarP(&allNamespaces, "all-namespaces", "A", false,
+		"If true, check the specified action in all namespaces.")
 
 	flag.CommandLine.VisitAll(func(goflag *flag.Flag) {
 		cmd.PersistentFlags().AddGoFlag(goflag)
