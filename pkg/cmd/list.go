@@ -26,12 +26,17 @@ type role struct {
 
 type roles map[role]struct{}
 
+// TODO Rename whoCan to WhoCanOptions
 type whoCan struct {
 	verb         string
 	resource     string
 	resourceName string
-	namespace    string
+	subResource  string
 
+	namespace     string
+	allNamespaces bool
+
+	configFlags        *genericclioptions.ConfigFlags
 	namespaces         clientcore.NamespaceInterface
 	rbac               clientrbac.RbacV1Interface
 	namespaceValidator NamespaceValidator
@@ -42,11 +47,14 @@ type whoCan struct {
 	apiResource meta.APIResource
 }
 
-func NewCmdWhoCan() *cobra.Command {
-	var namespaceFlag string
-	var allNamespaces bool
+func NewWhoCanOptions(config *genericclioptions.ConfigFlags) *whoCan {
+	return &whoCan{
+		configFlags: config,
+	}
+}
 
-	configFlags := genericclioptions.NewConfigFlags(true)
+func NewCmdWhoCan() *cobra.Command {
+	o := NewWhoCanOptions(genericclioptions.NewConfigFlags(true))
 
 	cmd := &cobra.Command{
 		Use:   "kubectl-who-can VERB TYPE [NAME]",
@@ -62,85 +70,107 @@ func NewCmdWhoCan() *cobra.Command {
   kubectl who-can create services -n foo
 
   # List who can get the service named "mongodb" in namespace "bar"
-  kubectl who-can get svc mongodb --namespace bar`,
+  kubectl who-can get svc mongodb --namespace bar
+
+  # List who can read pod logs
+  kubectl who-can get pods --subresource=log`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 2 {
 				return errors.New("please specify at least a verb and a resource type")
 			}
 			return nil
 		},
-		Run: func(cmd *cobra.Command, args []string) {
-			namespace, _, err := configFlags.ToRawKubeConfigLoader().Namespace()
-			if err != nil {
-				fmt.Printf("Error getting namespace from context config: %v\n", err)
-				os.Exit(1)
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := o.Complete(args); err != nil {
+				return err
 			}
-			if namespaceFlag != "" {
-				namespace = namespaceFlag
+			if err := o.Validate(); err != nil {
+				return err
 			}
-			if allNamespaces {
-				namespace = core.NamespaceAll
-			}
-
-			w := whoCan{}
-			w.verb = args[0]
-			w.resource = args[1]
-			if len(args) > 2 {
-				w.resourceName = args[2]
-			}
-			w.namespace = namespace
-
-			clientConfig, err := configFlags.ToRESTConfig()
-			if err != nil {
-				fmt.Printf("Error getting config: %v\n", err)
-				os.Exit(1)
+			if err := o.Check(); err != nil {
+				return err
 			}
 
-			client, err := kubernetes.NewForConfig(clientConfig)
-			if err != nil {
-				fmt.Printf("Error creating client: %v\n", err)
-				os.Exit(1)
-			}
-
-			// TODO Introduce proper dependency injection with NewCmdWhoCan(NewAPIAccessChecker(client), ...)
-			w.namespaces = client.CoreV1().Namespaces()
-			w.rbac = client.RbacV1()
-			w.accessChecker = NewAPIAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews())
-			w.namespaceValidator = NewNamespaceValidator(client.CoreV1().Namespaces())
-			w.resourceResolver = NewResourceResolver(client.Discovery())
-
-			if err := w.do(); err != nil {
-				fmt.Printf("Error: %v\n", err)
-				os.Exit(1)
-			}
+			return nil
 		},
 	}
 
-	cmd.PersistentFlags().StringVarP(&namespaceFlag, "namespace", "n", core.NamespaceAll,
+	cmd.PersistentFlags().StringVar(&o.subResource, "subresource", o.subResource, "SubResource such as pod/log or deployment/scale")
+	cmd.PersistentFlags().StringVarP(&o.namespace, "namespace", "n", core.NamespaceAll,
 		"if present, the namespace scope for the CLI request")
-	cmd.PersistentFlags().BoolVarP(&allNamespaces, "all-namespaces", "A", false,
+	cmd.PersistentFlags().BoolVarP(&o.allNamespaces, "all-namespaces", "A", false,
 		"If true, check the specified action in all namespaces.")
 
 	flag.CommandLine.VisitAll(func(goflag *flag.Flag) {
 		cmd.PersistentFlags().AddGoFlag(goflag)
 	})
-	configFlags.AddFlags(cmd.Flags())
+	o.configFlags.AddFlags(cmd.Flags())
 
 	return cmd
 }
 
-func (w *whoCan) do() error {
+// Complete sets all information required to check who can perform the specified action.
+func (w *whoCan) Complete(args []string) error {
+	var err error
+	if w.allNamespaces {
+		w.namespace = core.NamespaceAll
+	}
+
+	if !w.allNamespaces && w.namespace == "" {
+		w.namespace, _, err = w.configFlags.ToRawKubeConfigLoader().Namespace()
+		if err != nil {
+			return fmt.Errorf("getting namespace from current context: %v\n", err)
+		}
+	}
+
+	w.verb = args[0]
+	w.resource = args[1]
+	if len(args) > 2 {
+		w.resourceName = args[2]
+	}
+
+	clientConfig, err := w.configFlags.ToRESTConfig()
+	if err != nil {
+		return fmt.Errorf("getting config: %v", err)
+	}
+
+	client, err := kubernetes.NewForConfig(clientConfig)
+	if err != nil {
+		return fmt.Errorf("creating client: %v", err)
+	}
+
+	mapper, err := w.configFlags.ToRESTMapper()
+	if err != nil {
+		return fmt.Errorf("getting mapper: %v", err)
+	}
+
+	w.namespaces = client.CoreV1().Namespaces()
+	w.rbac = client.RbacV1()
+	w.accessChecker = NewAPIAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews())
+	w.namespaceValidator = NewNamespaceValidator(client.CoreV1().Namespaces())
+	w.resourceResolver = NewResourceResolver(client.Discovery(), mapper)
+	return nil
+}
+
+// Validate makes sure provided values for WhoCanOptions are valid.
+func (w *whoCan) Validate() error {
+	err := w.namespaceValidator.Validate(w.namespace)
+	if err != nil {
+		return fmt.Errorf("validating namespace: %v", err)
+	}
+
+	return nil
+}
+
+// Check checks who can perform the action specified by WhoCanOptions and prints the results to the standard output.
+func (w *whoCan) Check() error {
 	warnings, err := w.checkAPIAccess()
 	if err != nil {
 		return fmt.Errorf("checking API access: %v", err)
 	}
 
-	err = w.namespaceValidator.Validate(w.namespace)
-	if err != nil {
-		return fmt.Errorf("validating namespace: %v", err)
-	}
-
-	w.apiResource, err = w.resourceResolver.Resolve(w.verb, w.resource)
+	w.apiResource, err = w.resourceResolver.Resolve(w.verb, w.resource, w.subResource)
 	if err != nil {
 		return fmt.Errorf("resolving resource: %v", err)
 	}
