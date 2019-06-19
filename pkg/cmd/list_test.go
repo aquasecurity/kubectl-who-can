@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes/fake"
 	clientTesting "k8s.io/client-go/testing"
 	"testing"
@@ -21,6 +24,153 @@ type APIAccessCheckerMock struct {
 func (m *APIAccessCheckerMock) IsAllowedTo(verb, resource, namespace string) (bool, error) {
 	args := m.Called(verb, resource, namespace)
 	return args.Bool(0), args.Error(1)
+}
+
+type namespaceValidatorMock struct {
+	mock.Mock
+}
+
+func (w *namespaceValidatorMock) Validate(name string) error {
+	args := w.Called(name)
+	return args.Error(0)
+}
+
+func TestComplete(t *testing.T) {
+
+	type kubeContext struct {
+		namespace string
+	}
+
+	type flags struct {
+		namespace     string
+		allNamespaces bool
+	}
+
+	type expected struct {
+		namespace    string
+		verb         string
+		resource     string
+		resourceName string
+	}
+
+	data := []struct {
+		scenario string
+
+		kubeContext
+
+		flags flags
+		args  []string
+
+		expected
+	}{
+		{
+			scenario:    "A",
+			kubeContext: kubeContext{namespace: ""},
+			flags:       flags{namespace: "", allNamespaces: false},
+			args:        []string{"list", "pods"},
+			expected: expected{
+				namespace:    "default",
+				verb:         "list",
+				resource:     "pods",
+				resourceName: "",
+			},
+		},
+		{
+			scenario:    "B",
+			kubeContext: kubeContext{namespace: ""},
+			flags:       flags{namespace: "", allNamespaces: true},
+			args:        []string{"get", "service", "mongodb"},
+			expected: expected{
+				namespace:    corev1.NamespaceAll,
+				verb:         "get",
+				resource:     "service",
+				resourceName: "mongodb",
+			},
+		},
+		{
+			scenario:    "C",
+			kubeContext: kubeContext{namespace: "foo"},
+			flags:       flags{namespace: "", allNamespaces: false},
+			args:        []string{"create", "cm",},
+			expected: expected{
+				namespace: "foo",
+				verb:      "create",
+				resource:  "cm",
+			},
+		},
+		{
+			scenario:    "D",
+			kubeContext: kubeContext{namespace: "foo"},
+			flags:       flags{namespace: "bar", allNamespaces: false},
+			args:        []string{"delete", "pv",},
+			expected: expected{
+				namespace: "bar",
+				verb:      "delete",
+				resource:  "pv",
+			},
+		},
+	}
+
+	for _, tt := range data {
+		t.Run(tt.scenario, func(t *testing.T) {
+			// given
+			o := NewWhoCanOptions(&genericclioptions.ConfigFlags{
+				Namespace: &tt.kubeContext.namespace,
+			})
+			o.namespace = tt.flags.namespace
+			o.allNamespaces = tt.flags.allNamespaces
+
+			// when
+			err := o.Complete(tt.args)
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected.namespace, o.namespace)
+			assert.Equal(t, tt.expected.verb, o.verb)
+			assert.Equal(t, tt.expected.resource, o.resource)
+			assert.Equal(t, tt.expected.resourceName, o.resourceName)
+		})
+
+	}
+
+}
+
+func TestValidate(t *testing.T) {
+	data := []struct {
+		scenario      string
+		namespace     string
+		validationErr error
+		expectedErr   error
+	}{
+		{
+			scenario:  "Should return nil when namespace is valid",
+			namespace: "foo",
+		},
+		{
+			scenario:      "Should return error when namespace does not exist",
+			namespace:     "bar",
+			validationErr: errors.New("\"bar\" not found"),
+			expectedErr:   errors.New("validating namespace: \"bar\" not found"),
+		},
+	}
+
+	for _, tt := range data {
+		t.Run(tt.scenario, func(t *testing.T) {
+			// given
+			namespaceValidator := new(namespaceValidatorMock)
+			namespaceValidator.On("Validate", tt.namespace).Return(tt.validationErr)
+			o := NewWhoCanOptions(&genericclioptions.ConfigFlags{})
+			o.namespace = tt.namespace
+			o.namespaceValidator = namespaceValidator
+
+			// when
+			err := o.Validate()
+
+			// then
+			assert.Equal(t, tt.expectedErr, err)
+			namespaceValidator.AssertExpectations(t)
+		})
+	}
 }
 
 func TestMatch(t *testing.T) {
@@ -192,16 +342,16 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 	}{
 		{
 			scenario: "A",
-			verb:     "get", resource: "service", resourceName: "",
+			verb:     "get", resource: "services", resourceName: "",
 			rule: rbacv1.PolicyRule{
 				Verbs:     []string{"get", "list"},
-				Resources: []string{"service"},
+				Resources: []string{"services"},
 			},
 			matches: true,
 		},
 		{
 			scenario: "B",
-			verb:     "get", resource: "service", resourceName: "",
+			verb:     "get", resource: "services", resourceName: "",
 			rule: rbacv1.PolicyRule{
 				Verbs:     []string{"get", "list"},
 				Resources: []string{"*"},
@@ -210,49 +360,67 @@ func TestWhoCan_policyRuleMatches(t *testing.T) {
 		},
 		{
 			scenario: "C",
-			verb:     "get", resource: "service", resourceName: "",
+			verb:     "get", resource: "services", resourceName: "",
 			rule: rbacv1.PolicyRule{
 				Verbs:     []string{"*"},
-				Resources: []string{"service"},
+				Resources: []string{"services"},
 			},
 			matches: true,
 		},
 		{
 			scenario: "D",
-			verb:     "get", resource: "service", resourceName: "mongodb",
+			verb:     "get", resource: "services", resourceName: "mongodb",
 			rule: rbacv1.PolicyRule{
 				Verbs:     []string{"get", "list"},
-				Resources: []string{"service"},
+				Resources: []string{"services"},
 			},
 			matches: true,
 		},
 		{
 			scenario: "E",
-			verb:     "get", resource: "service", resourceName: "mongodb",
+			verb:     "get", resource: "services", resourceName: "mongodb",
 			rule: rbacv1.PolicyRule{
 				Verbs:         []string{"get", "list"},
-				Resources:     []string{"service"},
+				Resources:     []string{"services"},
 				ResourceNames: []string{"mongodb", "nginx"},
 			},
 			matches: true,
 		},
 		{
 			scenario: "F",
-			verb:     "get", resource: "service", resourceName: "mongodb",
+			verb:     "get", resource: "services", resourceName: "mongodb",
 			rule: rbacv1.PolicyRule{
 				Verbs:         []string{"get", "list"},
-				Resources:     []string{"service"},
+				Resources:     []string{"services"},
 				ResourceNames: []string{"nginx"},
 			},
 			matches: false,
 		},
 		{
 			scenario: "G",
-			verb:     "get", resource: "service", resourceName: "",
+			verb:     "get", resource: "services", resourceName: "",
 			rule: rbacv1.PolicyRule{
 				Verbs:         []string{"get", "list"},
-				Resources:     []string{"service"},
+				Resources:     []string{"services"},
 				ResourceNames: []string{"nginx"},
+			},
+			matches: false,
+		},
+		{
+			scenario: "H",
+			verb:     "get", resource: "pods", resourceName: "",
+			rule: rbacv1.PolicyRule{
+				Verbs:     []string{"create"},
+				Resources: []string{"pods"},
+			},
+			matches: false,
+		},
+		{
+			scenario: "I",
+			verb:     "get", resource: "persistentvolumes", resourceName: "",
+			rule: rbacv1.PolicyRule{
+				Verbs:     []string{"get"},
+				Resources: []string{"pods"},
 			},
 			matches: false,
 		},

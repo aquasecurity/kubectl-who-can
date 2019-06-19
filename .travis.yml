@@ -11,8 +11,8 @@ git:
 notifications:
   email: false
 script:
-  - go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
-  - go build -o kubectl-who-can main.go
+  - make tests
+  - make
 after_success:
   - bash <(curl -s https://codecov.io/bash)
 deploy:

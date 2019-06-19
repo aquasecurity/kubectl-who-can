@@ -1,11 +1,10 @@
 SOURCES := $(shell find . -name '*.go')
 BINARY := kubectl-who-can
-TARGET_OS := linux
 
 build: kubectl-who-can
 
 $(BINARY): $(SOURCES)
-	GOOS=$(TARGET_OS) go build -o $(BINARY) .
+	GO111MODULE=on CGO_ENABLED=0 go build -o $(BINARY) ./cmd/kubectl-who-can.go
 
-tests:
-	go test -v -race -timeout 30s -cover ./...
+tests: $(SOURCES)
+	GO111MODULE=on go test -v -short -race -timeout 30s -coverprofile=coverage.txt -covermode=atomic ./...

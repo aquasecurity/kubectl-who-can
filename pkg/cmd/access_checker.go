@@ -1,8 +1,8 @@
-package whocan
+package cmd
 
 import (
-	authzv1 "k8s.io/api/authorization/v1"
-	v1 "k8s.io/client-go/kubernetes/typed/authorization/v1"
+	authz "k8s.io/api/authorization/v1"
+	clientauthz "k8s.io/client-go/kubernetes/typed/authorization/v1"
 )
 
 type APIAccessChecker interface {
@@ -10,19 +10,19 @@ type APIAccessChecker interface {
 }
 
 type accessChecker struct {
-	client v1.SelfSubjectAccessReviewInterface
+	client clientauthz.SelfSubjectAccessReviewInterface
 }
 
-func NewAPIAccessChecker(client v1.SelfSubjectAccessReviewInterface) APIAccessChecker {
+func NewAPIAccessChecker(client clientauthz.SelfSubjectAccessReviewInterface) APIAccessChecker {
 	return &accessChecker{
 		client: client,
 	}
 }
 
 func (ac *accessChecker) IsAllowedTo(verb, resource, namespace string) (bool, error) {
-	sar := &authzv1.SelfSubjectAccessReview{
-		Spec: authzv1.SelfSubjectAccessReviewSpec{
-			ResourceAttributes: &authzv1.ResourceAttributes{
+	sar := &authz.SelfSubjectAccessReview{
+		Spec: authz.SelfSubjectAccessReviewSpec{
+			ResourceAttributes: &authz.ResourceAttributes{
 				Verb:      verb,
 				Resource:  resource,
 				Namespace: namespace,
