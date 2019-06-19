@@ -53,7 +53,10 @@ func NewCmdWhoCan() *cobra.Command {
 		Short: "who-can shows which users, groups and service accounts can perform a given action",
 		Long:  "who-can shows which users, groups and service accounts can perform a given verb on a given resource type",
 		Example: `  # List who can get pods in any namespace
-  kubectl who-can get pods
+  kubectl who-can get pods --all-namespaces
+
+  # List who can create pods in the current namespace
+  kubectl who-can create pods
 
   # List who can create services in namespace "foo"
   kubectl who-can create services -n foo
