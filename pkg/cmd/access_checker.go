@@ -5,7 +5,11 @@ import (
 	clientauthz "k8s.io/client-go/kubernetes/typed/authorization/v1"
 )
 
-type APIAccessChecker interface {
+// AccessChecker wraps the IsAllowedTo method.
+//
+// IsAllowedTo checks whether the current user is allowed to perform the given action in the specified namespace.
+// Specifying "" as namespace performs check in all namespaces.
+type AccessChecker interface {
 	IsAllowedTo(verb, resource, namespace string) (bool, error)
 }
 
@@ -13,7 +17,7 @@ type accessChecker struct {
 	client clientauthz.SelfSubjectAccessReviewInterface
 }
 
-func NewAPIAccessChecker(client clientauthz.SelfSubjectAccessReviewInterface) APIAccessChecker {
+func NewAccessChecker(client clientauthz.SelfSubjectAccessReviewInterface) AccessChecker {
 	return &accessChecker{
 		client: client,
 	}
