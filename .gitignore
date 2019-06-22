@@ -6,3 +6,6 @@ coverage.txt
 
 # GoLand / IntelliJ IDEA project config files
 .idea/
+
+# Kubernetes integration test binary
+test/bin/integration_test
