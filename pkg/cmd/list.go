@@ -19,6 +19,32 @@ import (
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	whoCanUsage = `kubectl who-can VERB [TYPE | TYPE/NAME | NONRESOURCEURL]`
+	whoCanLong  = `Shows which users, groups and service accounts can perform a given verb on a given resource type.
+
+VERB is a logical Kubernetes API verb like 'get', 'list', 'watch', 'delete', etc.
+TYPE is a Kubernetes resource. Shortcuts, such as 'pod' or 'po' will be resolved. NAME is the name of a particular Kubernetes resource.
+NONRESOURCEURL is a partial URL that starts with "/".`
+	whoCanExample = `  # List who can get pods in any namespace
+  kubectl who-can get pods --all-namespaces
+
+  # List who can create pods in the current namespace
+  kubectl who-can create pods
+
+  # List who can create services in namespace "foo"
+  kubectl who-can create services -n foo
+
+  # List who can get the service named "mongodb" in namespace "bar"
+  kubectl who-can get svc/mongodb --namespace bar
+
+  # List who can read pod logs
+  kubectl who-can get pods --subresource=log
+
+  # List who can access the URL /logs/
+  kubectl who-can get /logs`
+)
+
 type role struct {
 	name          string
 	isClusterRole bool
@@ -26,7 +52,6 @@ type role struct {
 
 type roles map[role]struct{}
 
-// TODO Rename whoCan to WhoCanOptions
 type whoCan struct {
 	verb           string
 	resource       string
@@ -37,6 +62,7 @@ type whoCan struct {
 	namespace     string
 	allNamespaces bool
 
+	configFlags     *clioptions.ConfigFlags
 	clientConfig    clientcmd.ClientConfig
 	clientNamespace clientcore.NamespaceInterface
 	clientRBAC      clientrbac.RbacV1Interface
@@ -50,7 +76,8 @@ type whoCan struct {
 	clioptions.IOStreams
 }
 
-func NewWhoCanOptions(clientConfig clientcmd.ClientConfig,
+func NewWhoCanOptions(configFlags *clioptions.ConfigFlags,
+	clientConfig clientcmd.ClientConfig,
 	clientNamespace clientcore.NamespaceInterface,
 	clientRBAC clientrbac.RbacV1Interface,
 	namespaceValidator NamespaceValidator,
@@ -58,6 +85,7 @@ func NewWhoCanOptions(clientConfig clientcmd.ClientConfig,
 	accessChecker AccessChecker,
 	streams clioptions.IOStreams) *whoCan {
 	return &whoCan{
+		configFlags:        configFlags,
 		clientConfig:       clientConfig,
 		clientNamespace:    clientNamespace,
 		clientRBAC:         clientRBAC,
@@ -91,7 +119,8 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 	namespaceValidator := NewNamespaceValidator(clientNamespace)
 	resourceResolver := NewResourceResolver(client.Discovery(), mapper)
 
-	o := NewWhoCanOptions(configFlags.ToRawKubeConfigLoader(),
+	o := NewWhoCanOptions(configFlags,
+		configFlags.ToRawKubeConfigLoader(),
 		clientNamespace,
 		client.RbacV1(),
 		namespaceValidator,
@@ -100,26 +129,9 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 		streams)
 
 	cmd := &cobra.Command{
-		Use:   "kubectl who-can VERB [TYPE | TYPE/NAME | NONRESOURCEURL]",
-		Short: "who-can shows which users, groups and service accounts can perform a given action",
-		Long:  "who-can shows which users, groups and service accounts can perform a given verb on a given resource type",
-		Example: `  # List who can get pods in any namespace
-  kubectl who-can get pods --all-namespaces
-
-  # List who can create pods in the current namespace
-  kubectl who-can create pods
-
-  # List who can create services in namespace "foo"
-  kubectl who-can create services -n foo
-
-  # List who can get the service named "mongodb" in namespace "bar"
-  kubectl who-can get svc/mongodb --namespace bar
-
-  # List who can read pod logs
-  kubectl who-can get pods --subresource=log
-
-  # List who can access the URL /logs/
-  kubectl who-can get /logs`,
+		Use:          whoCanUsage,
+		Long:         whoCanLong,
+		Example:      whoCanExample,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := o.Complete(args); err != nil {
@@ -137,8 +149,6 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 	}
 
 	cmd.PersistentFlags().StringVar(&o.subResource, "subresource", o.subResource, "SubResource such as pod/log or deployment/scale")
-	cmd.PersistentFlags().StringVarP(&o.namespace, "namespace", "n", core.NamespaceAll,
-		"if present, the namespace scope for the CLI request")
 	cmd.PersistentFlags().BoolVarP(&o.allNamespaces, "all-namespaces", "A", false,
 		"If true, check the specified action in all namespaces.")
 
@@ -193,18 +203,26 @@ func (w *whoCan) resolveArgs(args []string) error {
 func (w *whoCan) resolveNamespace() (err error) {
 	if w.allNamespaces {
 		w.namespace = core.NamespaceAll
+		glog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", w.namespace)
+		return nil
 	}
 
-	if !w.allNamespaces && w.namespace == "" {
-		w.namespace, _, err = w.clientConfig.Namespace()
-		if err != nil {
-			return fmt.Errorf("getting namespace from current context: %v\n", err)
-		}
+	if w.configFlags.Namespace != nil && *w.configFlags.Namespace != "" {
+		w.namespace = *w.configFlags.Namespace
+		glog.V(3).Infof("Resolved namespace `%s` from --namespace flag", w.namespace)
+		return nil
 	}
+
+	// Neither --all-namespaces nor --namespace flag was specified
+	w.namespace, _, err = w.clientConfig.Namespace()
+	if err != nil {
+		return fmt.Errorf("getting namespace from current context: %v", err)
+	}
+	glog.V(3).Infof("Resolved namespace `%s` from current context", w.namespace)
 	return nil
 }
 
-// Validate makes sure that provided args and flags values for WhoCanOptions are valid.
+// Validate makes sure that provided args and flags are valid.
 func (w *whoCan) Validate() error {
 	if w.nonResourceURL != "" && w.subResource != "" {
 		return fmt.Errorf("--subresource cannot be used with NONRESOURCEURL")

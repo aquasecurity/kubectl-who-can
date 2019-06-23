@@ -5,13 +5,13 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clioptions "k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes/fake"
 	clientTesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/clientcmd"
 	"testing"
 
 	rbac "k8s.io/api/rbac/v1"
@@ -44,10 +44,21 @@ func (r *resourceResolverMock) Resolve(verb, resource, subResource string) (stri
 	return args.String(0), args.Error(1)
 }
 
+type clientConfigMock struct {
+	mock.Mock
+	clientcmd.DirectClientConfig
+}
+
+func (cc *clientConfigMock) Namespace() (string, bool, error) {
+	args := cc.Called()
+	return args.String(0), args.Bool(1), args.Error(2)
+}
+
 func TestComplete(t *testing.T) {
 
-	type kubeContext struct {
+	type currentContext struct {
 		namespace string
+		err       error
 	}
 
 	type flags struct {
@@ -59,7 +70,9 @@ func TestComplete(t *testing.T) {
 		verb        string
 		resource    string
 		subResource string
+
 		result      string
+		err         error
 	}
 
 	type expected struct {
@@ -67,38 +80,52 @@ func TestComplete(t *testing.T) {
 		verb         string
 		resource     string
 		resourceName string
+		err          error
 	}
 
 	data := []struct {
 		scenario string
 
-		kubeContext
+		*currentContext
 
-		flags      flags
-		args       []string
-		resolution resolution
+		flags flags
+		args  []string
+		*resolution
 
 		expected
 	}{
 		{
-			scenario:    "A",
-			kubeContext: kubeContext{namespace: ""},
-			flags:       flags{namespace: "", allNamespaces: false},
-			args:        []string{"list", "pods"},
-			resolution:  resolution{verb: "list", resource: "pods", result: "pods"},
+			scenario:       "A",
+			currentContext: &currentContext{namespace: "foo"},
+			flags:          flags{namespace: "", allNamespaces: false},
+			args:           []string{"list", "pods"},
+			resolution:     &resolution{verb: "list", resource: "pods", result: "pods"},
 			expected: expected{
-				namespace:    "default",
+				namespace:    "foo",
 				verb:         "list",
 				resource:     "pods",
 				resourceName: "",
 			},
 		},
 		{
-			scenario:    "B",
-			kubeContext: kubeContext{namespace: ""},
-			flags:       flags{namespace: "", allNamespaces: true},
-			args:        []string{"get", "service/mongodb"},
-			resolution:  resolution{verb: "get", resource: "service", result: "services"},
+			scenario:       "B",
+			currentContext: &currentContext{err: errors.New("cannot open context")},
+			flags:          flags{namespace: "", allNamespaces: false},
+			args:           []string{"list", "pods"},
+			resolution:     &resolution{verb: "list", resource: "pods", result: "pods"},
+			expected: expected{
+				namespace:    "",
+				verb:         "list",
+				resource:     "pods",
+				resourceName: "",
+				err:          errors.New("getting namespace from current context: cannot open context"),
+			},
+		},
+		{
+			scenario:   "C",
+			flags:      flags{namespace: "", allNamespaces: true},
+			args:       []string{"get", "service/mongodb"},
+			resolution: &resolution{verb: "get", resource: "service", result: "services"},
 			expected: expected{
 				namespace:    core.NamespaceAll,
 				verb:         "get",
@@ -107,27 +134,43 @@ func TestComplete(t *testing.T) {
 			},
 		},
 		{
-			scenario:    "C",
-			kubeContext: kubeContext{namespace: "foo"},
-			flags:       flags{namespace: "", allNamespaces: false},
-			args:        []string{"create", "cm"},
-			resolution:  resolution{verb: "create", resource: "cm", result: "configmaps"},
-			expected: expected{
-				namespace: "foo",
-				verb:      "create",
-				resource:  "configmaps",
-			},
-		},
-		{
-			scenario:    "D",
-			kubeContext: kubeContext{namespace: "foo"},
-			flags:       flags{namespace: "bar", allNamespaces: false},
-			args:        []string{"delete", "pv"},
-			resolution:  resolution{verb: "delete", resource: "pv", result: "persistentvolumes"},
+			scenario:   "D",
+			flags:      flags{namespace: "bar", allNamespaces: false},
+			args:       []string{"delete", "pv"},
+			resolution: &resolution{verb: "delete", resource: "pv", result: "persistentvolumes"},
 			expected: expected{
 				namespace: "bar",
 				verb:      "delete",
 				resource:  "persistentvolumes",
+			},
+		},
+		{
+			scenario:   "E",
+			flags:      flags{allNamespaces: false},
+			args:       []string{"delete", "pv"},
+			resolution: &resolution{verb: "delete", resource: "pv", err: errors.New("failed")},
+			expected: expected{
+				namespace: "",
+				verb:      "delete",
+				err:       errors.New("resolving resource: failed"),
+				resource:  "",
+			},
+		},
+		{
+			scenario: "F",
+			flags:    flags{namespace: "foo"},
+			args:     []string{"get", "/logs"},
+			expected: expected{
+				namespace: "foo",
+				verb:      "get",
+				resource:  "",
+			},
+		},
+		{
+			scenario: "G",
+			args:     []string{},
+			expected: expected{
+				err: errors.New("you must specify two or three arguments: verb, resource, and optional resourceName"),
 			},
 		},
 	}
@@ -135,18 +178,27 @@ func TestComplete(t *testing.T) {
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
 			// setup
-			configFlags := clioptions.ConfigFlags{Namespace: &tt.kubeContext.namespace}
+			configFlags := &clioptions.ConfigFlags{
+				Namespace: &tt.flags.namespace,
+			}
 
 			kubeClient := fake.NewSimpleClientset()
+			clientConfig := new(clientConfigMock)
 			namespaceValidator := new(namespaceValidatorMock)
 			accessChecker := new(accessCheckerMock)
 			resourceResolver := new(resourceResolverMock)
 
-			resourceResolver.On("Resolve", tt.resolution.verb, tt.resolution.resource, tt.resolution.subResource).
-				Return(tt.resolution.result, nil)
+			if tt.resolution != nil {
+				resourceResolver.On("Resolve", tt.resolution.verb, tt.resolution.resource, tt.resolution.subResource).
+					Return(tt.resolution.result, tt.resolution.err)
+			}
+			if tt.currentContext != nil {
+				clientConfig.On("Namespace").Return(tt.currentContext.namespace, false, tt.currentContext.err)
+			}
 
 			// given
-			o := NewWhoCanOptions(configFlags.ToRawKubeConfigLoader(),
+			o := NewWhoCanOptions(configFlags,
+				clientConfig,
 				kubeClient.CoreV1().Namespaces(),
 				kubeClient.RbacV1(),
 				namespaceValidator,
@@ -162,12 +214,13 @@ func TestComplete(t *testing.T) {
 			err := o.Complete(tt.args)
 
 			// then
-			require.NoError(t, err)
+			assert.Equal(t, tt.expected.err, err)
 			assert.Equal(t, tt.expected.namespace, o.namespace)
 			assert.Equal(t, tt.expected.verb, o.verb)
 			assert.Equal(t, tt.expected.resource, o.resource)
 			assert.Equal(t, tt.expected.resourceName, o.resourceName)
 
+			clientConfig.AssertExpectations(t)
 			resourceResolver.AssertExpectations(t)
 		})
 
@@ -176,21 +229,37 @@ func TestComplete(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
+	type namespaceValidation struct {
+		returnedError error
+	}
+
 	data := []struct {
-		scenario      string
-		namespace     string
-		validationErr error
-		expectedErr   error
+		scenario string
+
+		nonResourceURL string
+		subResource    string
+		namespace      string
+
+		*namespaceValidation
+
+		expectedErr error
 	}{
 		{
-			scenario:  "Should return nil when namespace is valid",
-			namespace: "foo",
+			scenario:            "Should return nil when namespace is valid",
+			namespace:           "foo",
+			namespaceValidation: &namespaceValidation{returnedError: nil},
 		},
 		{
-			scenario:      "Should return error when namespace does not exist",
-			namespace:     "bar",
-			validationErr: errors.New("\"bar\" not found"),
-			expectedErr:   errors.New("validating namespace: \"bar\" not found"),
+			scenario:            "Should return error when namespace does not exist",
+			namespace:           "bar",
+			namespaceValidation: &namespaceValidation{returnedError: errors.New("\"bar\" not found")},
+			expectedErr:         errors.New("validating namespace: \"bar\" not found"),
+		},
+		{
+			scenario:       "Should return error when --subresource flag is used with non-resource URL",
+			nonResourceURL: "/api",
+			subResource:    "logs",
+			expectedErr:    errors.New("--subresource cannot be used with NONRESOURCEURL"),
 		},
 	}
 
@@ -198,11 +267,17 @@ func TestValidate(t *testing.T) {
 		t.Run(tt.scenario, func(t *testing.T) {
 			// given
 			namespaceValidator := new(namespaceValidatorMock)
-			namespaceValidator.On("Validate", tt.namespace).Return(tt.validationErr)
+			if tt.namespaceValidation != nil {
+				namespaceValidator.On("Validate", tt.namespace).
+					Return(tt.namespaceValidation.returnedError)
+			}
 
-			o := &whoCan{}
-			o.namespace = tt.namespace
-			o.namespaceValidator = namespaceValidator
+			o := &whoCan{
+				nonResourceURL:     tt.nonResourceURL,
+				subResource:        tt.subResource,
+				namespace:          tt.namespace,
+				namespaceValidator: namespaceValidator,
+			}
 
 			// when
 			err := o.Validate()
@@ -318,8 +393,9 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 			}
 
 			// given
-			configFlags := clioptions.ConfigFlags{}
-			wc := NewWhoCanOptions(configFlags.ToRawKubeConfigLoader(),
+			configFlags := &clioptions.ConfigFlags{}
+			wc := NewWhoCanOptions(configFlags,
+				configFlags.ToRawKubeConfigLoader(),
 				client.CoreV1().Namespaces(),
 				client.RbacV1(),
 				namespaceValidator,
