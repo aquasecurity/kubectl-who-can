@@ -1,0 +1,28 @@
+version: '3'
+services:
+  kube:
+    network_mode: host
+    image: rancher/k3s:v0.5.0
+    command: server --disable-agent
+    ports:
+      - 6443:6443
+    environment:
+      - K3S_CLUSTER_SECRET=somethingtotallyrandom
+      - K3S_KUBECONFIG_OUTPUT=/output/kubeconfig.yaml
+      - K3S_KUBECONFIG_MODE=666
+    volumes:
+      - kube-data:/var/lib/rancher/k3s
+      - kube-data:/tmp
+      - shared-data:/output
+  test:
+    network_mode: host
+    build: .
+    environment:
+      - KUBECONFIG=/output/kubeconfig.yaml
+    volumes:
+      - shared-data:/output
+    depends_on:
+      - kube
+volumes:
+  kube-data:
+  shared-data:
