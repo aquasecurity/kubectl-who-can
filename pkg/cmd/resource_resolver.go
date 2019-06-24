@@ -10,11 +10,11 @@ import (
 
 // ResourceResolver wraps the Resolve method.
 //
-// Resolve attempts to resolve an APIResource by `resource` and `subResource`.
+// Resolve attempts to resolve an APIResource's Name by `resource` and `subResource`.
 // It then validates that the specified `verb` is supported.
-// The returned APIResource may represent a resource (e.g. pods) or a sub-resource (e.g. pods/log).
+// The returned APIResource's Name may represent a resource (e.g. `pods`) or a sub-resource (e.g. `pods/log`).
 type ResourceResolver interface {
-	Resolve(verb, resource, subResource string) (v1.APIResource, error)
+	Resolve(verb, resource, subResource string) (string, error)
 }
 
 type resourceResolver struct {
@@ -29,21 +29,21 @@ func NewResourceResolver(client discovery.DiscoveryInterface, mapper meta.RESTMa
 	}
 }
 
-func (rv *resourceResolver) Resolve(verbArg, resourceArg, subResource string) (v1.APIResource, error) {
+func (rv *resourceResolver) Resolve(verbArg, resourceArg, subResource string) (string, error) {
 	resource, err := rv.resourceFor(resourceArg, subResource)
 	if err != nil {
 		name := resourceArg
 		if subResource != "" {
 			name = name + "/" + subResource
 		}
-		return v1.APIResource{}, fmt.Errorf("the server doesn't have a resource type \"%s\"", name)
+		return "", fmt.Errorf("the server doesn't have a resource type \"%s\"", name)
 	}
 
 	if !rv.isVerbSupportedBy(verbArg, resource) {
-		return v1.APIResource{}, fmt.Errorf("the \"%s\" resource does not support the \"%s\" verb, only %v", resource.Name, verbArg, resource.Verbs)
+		return "", fmt.Errorf("the \"%s\" resource does not support the \"%s\" verb, only %v", resource.Name, verbArg, resource.Verbs)
 	}
 
-	return resource, nil
+	return resource.Name, nil
 }
 
 func (rv *resourceResolver) resourceFor(resourceArg, subResource string) (v1.APIResource, error) {

@@ -43,7 +43,7 @@ func TestIsAllowed(t *testing.T) {
 			client := newClient(tt.reactionFunc)
 
 			// when
-			allowed, err := NewAPIAccessChecker(client).IsAllowedTo("list", "roles", "")
+			allowed, err := NewAccessChecker(client).IsAllowedTo("list", "roles", "")
 
 			// then
 			assert.Equal(t, tt.allowed, allowed)

@@ -131,7 +131,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 			resource, err := resolver.Resolve(tt.given.verb, tt.given.resource, tt.given.subResource)
 
 			assert.Equal(t, tt.expected.err, err)
-			assert.Equal(t, resource.Name, tt.expected.resource)
+			assert.Equal(t, tt.expected.resource, resource)
 
 			mapper.AssertExpectations(t)
 		})
