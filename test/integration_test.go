@@ -77,7 +77,7 @@ func TestIntegration(t *testing.T) {
 		output   string
 	}{
 		{
-			scenario: "Should print who can crete configmaps",
+			scenario: "Should print who can create configmaps",
 			args:     []string{"create", "cm"},
 			output: `ROLEBINDING                  NAMESPACE  SUBJECT  TYPE  SA-NAMESPACE
 alice-can-create-configmaps  default    Alice    User`,
