@@ -3,11 +3,11 @@ package cmd
 import (
 	"errors"
 	"github.com/stretchr/testify/assert"
-	authzv1 "k8s.io/api/authorization/v1"
+	authz "k8s.io/api/authorization/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
-	v1 "k8s.io/client-go/kubernetes/typed/authorization/v1"
-	k8stesting "k8s.io/client-go/testing"
+	clientauthz "k8s.io/client-go/kubernetes/typed/authorization/v1"
+	clienttesting "k8s.io/client-go/testing"
 	"testing"
 )
 
@@ -15,7 +15,7 @@ func TestIsAllowed(t *testing.T) {
 
 	data := []struct {
 		scenario     string
-		reactionFunc k8stesting.ReactionFunc
+		reactionFunc clienttesting.ReactionFunc
 
 		allowed bool
 		err     error
@@ -53,16 +53,16 @@ func TestIsAllowed(t *testing.T) {
 
 }
 
-func newClient(reaction k8stesting.ReactionFunc) v1.SelfSubjectAccessReviewInterface {
+func newClient(reaction clienttesting.ReactionFunc) clientauthz.SelfSubjectAccessReviewInterface {
 	client := fake.NewSimpleClientset()
 	client.Fake.PrependReactor("create", "selfsubjectaccessreviews", reaction)
 	return client.AuthorizationV1().SelfSubjectAccessReviews()
 }
 
-func newSelfSubjectAccessReviewsReactionFunc(allowed bool, err error) k8stesting.ReactionFunc {
-	return func(action k8stesting.Action) (bool, runtime.Object, error) {
-		sar := &authzv1.SelfSubjectAccessReview{
-			Status: authzv1.SubjectAccessReviewStatus{
+func newSelfSubjectAccessReviewsReactionFunc(allowed bool, err error) clienttesting.ReactionFunc {
+	return func(action clienttesting.Action) (bool, runtime.Object, error) {
+		sar := &authz.SelfSubjectAccessReview{
+			Status: authz.SubjectAccessReviewStatus{
 				Allowed: allowed,
 			},
 		}

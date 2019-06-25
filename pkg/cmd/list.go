@@ -38,6 +38,12 @@ NONRESOURCEURL is a partial URL that starts with "/".`
   # List who can get the service named "mongodb" in namespace "bar"
   kubectl who-can get svc/mongodb --namespace bar
 
+  # List who can do everything with pods in the current namespace
+  kubectl who-can '*' pods
+
+  # List who can list every resource in the namespace "baz"
+  kubectl who-can list '*' -n baz
+
   # List who can read pod logs
   kubectl who-can get pods --subresource=log
 
@@ -148,7 +154,8 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 		},
 	}
 
-	cmd.PersistentFlags().StringVar(&o.subResource, "subresource", o.subResource, "SubResource such as pod/log or deployment/scale")
+	cmd.PersistentFlags().StringVar(&o.subResource, "subresource", o.subResource,
+		"SubResource such as pod/log or deployment/scale")
 	cmd.PersistentFlags().BoolVarP(&o.allNamespaces, "all-namespaces", "A", false,
 		"If true, check the specified action in all namespaces.")
 
