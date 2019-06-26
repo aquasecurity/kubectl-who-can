@@ -29,7 +29,7 @@ The `kubectl-who-can` binary will be in the current directory.
 
 Option 2 (if you have a Go compiler and just want the binary):
 ```
-go get -v github.com/aquasecurity/kubectl-who-can
+go get -v github.com/aquasecurity/kubectl-who-can/cmd
 ```
 The `kubectl-who-can` binary will be in `$GOPATH/bin`.
 
