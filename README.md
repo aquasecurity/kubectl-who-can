@@ -4,7 +4,8 @@
 [![Go Report Card][report-card-img]][report-card]
 
 # kubectl-who-can
-[WIP] show who has permissions to &lt;verb> &lt;resources> in kubernetes
+
+Shows who has permissions to VERB [TYPE | TYPE/NAME | NONRESOURCEURL] in Kubernetes.
 
 [![asciicast](https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j.svg)](https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j)
 
@@ -37,10 +38,6 @@ Option 3 (if you don't have a Go compiler, but have Docker installed):
 docker run --rm -v /usr/local/bin:/go/bin golang go get -v github.com/aquasecurity/kubectl-who-can
 ```
 The `kubectl-who-can` binary will be in `/usr/local/bin`.
-
-## TODO
-
-* Make it a kubectl plugin (for now it's a standalone executable)
 
 [release-img]: https://img.shields.io/github/release/aquasecurity/kubectl-who-can.svg
 [release]: https://github.com/aquasecurity/kubectl-who-can/releases

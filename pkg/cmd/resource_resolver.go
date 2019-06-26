@@ -2,8 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	rbac "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apismeta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 )
@@ -29,45 +30,48 @@ func NewResourceResolver(client discovery.DiscoveryInterface, mapper meta.RESTMa
 	}
 }
 
-func (rv *resourceResolver) Resolve(verbArg, resourceArg, subResource string) (string, error) {
-	resource, err := rv.resourceFor(resourceArg, subResource)
+func (rv *resourceResolver) Resolve(verb, resource, subResource string) (string, error) {
+	if resource == rbac.ResourceAll {
+		return resource, nil
+	}
+	apiResource, err := rv.resourceFor(resource, subResource)
 	if err != nil {
-		name := resourceArg
+		name := resource
 		if subResource != "" {
 			name = name + "/" + subResource
 		}
 		return "", fmt.Errorf("the server doesn't have a resource type \"%s\"", name)
 	}
 
-	if !rv.isVerbSupportedBy(verbArg, resource) {
-		return "", fmt.Errorf("the \"%s\" resource does not support the \"%s\" verb, only %v", resource.Name, verbArg, resource.Verbs)
+	if !rv.isVerbSupportedBy(verb, apiResource) {
+		return "", fmt.Errorf("the \"%s\" resource does not support the \"%s\" verb, only %v", apiResource.Name, verb, apiResource.Verbs)
 	}
 
-	return resource.Name, nil
+	return apiResource.Name, nil
 }
 
-func (rv *resourceResolver) resourceFor(resourceArg, subResource string) (v1.APIResource, error) {
+func (rv *resourceResolver) resourceFor(resourceArg, subResource string) (apismeta.APIResource, error) {
 	index, err := rv.indexResources()
 	if err != nil {
-		return v1.APIResource{}, err
+		return apismeta.APIResource{}, err
 	}
 
 	apiResource, err := rv.lookupResource(index, resourceArg)
 	if err != nil {
-		return v1.APIResource{}, err
+		return apismeta.APIResource{}, err
 	}
 
 	if subResource != "" {
 		apiResource, err = rv.lookupSubResource(index, apiResource.Name+"/"+subResource)
 		if err != nil {
-			return v1.APIResource{}, err
+			return apismeta.APIResource{}, err
 		}
 		return apiResource, nil
 	}
 	return apiResource, nil
 }
 
-func (rv *resourceResolver) lookupResource(index map[string]v1.APIResource, resourceArg string) (v1.APIResource, error) {
+func (rv *resourceResolver) lookupResource(index map[string]apismeta.APIResource, resourceArg string) (apismeta.APIResource, error) {
 	resource, ok := index[resourceArg]
 	if ok {
 		return resource, nil
@@ -75,26 +79,26 @@ func (rv *resourceResolver) lookupResource(index map[string]v1.APIResource, reso
 
 	gvr, err := rv.mapper.ResourceFor(schema.GroupVersionResource{Resource: resourceArg})
 	if err != nil {
-		return v1.APIResource{}, err
+		return apismeta.APIResource{}, err
 	}
 	resource, ok = index[gvr.Resource]
 	if ok {
 		return resource, nil
 	}
-	return v1.APIResource{}, fmt.Errorf("not found \"%s\"", resourceArg)
+	return apismeta.APIResource{}, fmt.Errorf("not found \"%s\"", resourceArg)
 }
 
-func (rv *resourceResolver) lookupSubResource(index map[string]v1.APIResource, subResource string) (v1.APIResource, error) {
+func (rv *resourceResolver) lookupSubResource(index map[string]apismeta.APIResource, subResource string) (apismeta.APIResource, error) {
 	apiResource, ok := index[subResource]
 	if !ok {
-		return v1.APIResource{}, fmt.Errorf("not found \"%s\"", subResource)
+		return apismeta.APIResource{}, fmt.Errorf("not found \"%s\"", subResource)
 	}
 	return apiResource, nil
 }
 
 // indexResources builds a lookup index for APIResources where the keys are resources names (both plural and short names).
-func (rv *resourceResolver) indexResources() (map[string]v1.APIResource, error) {
-	serverResources := make(map[string]v1.APIResource)
+func (rv *resourceResolver) indexResources() (map[string]apismeta.APIResource, error) {
+	serverResources := make(map[string]apismeta.APIResource)
 
 	serverGroups, err := rv.client.ServerGroups()
 	if err != nil {
@@ -125,7 +129,11 @@ func (rv *resourceResolver) indexResources() (map[string]v1.APIResource, error) 
 }
 
 // isVerbSupportedBy returns `true` if the given verb is supported by the given resource, `false` otherwise.
-func (rv *resourceResolver) isVerbSupportedBy(verb string, resource v1.APIResource) bool {
+// Returns `true` if the given verb equals VerbAll.
+func (rv *resourceResolver) isVerbSupportedBy(verb string, resource apismeta.APIResource) bool {
+	if verb == rbac.VerbAll {
+		return true
+	}
 	supported := false
 	for _, v := range resource.Verbs {
 		if v == verb {

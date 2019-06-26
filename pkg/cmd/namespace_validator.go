@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	apicorev1 "k8s.io/api/core/v1"
+	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientcore "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 type NamespaceValidator interface {
@@ -13,26 +13,26 @@ type NamespaceValidator interface {
 }
 
 type namespaceValidator struct {
-	client typedcorev1.NamespaceInterface
+	client clientcore.NamespaceInterface
 }
 
-func NewNamespaceValidator(client typedcorev1.NamespaceInterface) NamespaceValidator {
+func NewNamespaceValidator(client clientcore.NamespaceInterface) NamespaceValidator {
 	return &namespaceValidator{
 		client: client,
 	}
 }
 
 func (w *namespaceValidator) Validate(name string) error {
-	if name != apicorev1.NamespaceAll {
-		ns, err := w.client.Get(name, metav1.GetOptions{})
+	if name != core.NamespaceAll {
+		ns, err := w.client.Get(name, meta.GetOptions{})
 		if err != nil {
 			if statusErr, ok := err.(*errors.StatusError); ok &&
-				statusErr.Status().Reason == metav1.StatusReasonNotFound {
+				statusErr.Status().Reason == meta.StatusReasonNotFound {
 				return fmt.Errorf("\"%s\" not found", name)
 			}
 			return fmt.Errorf("getting namespace: %v", err)
 		}
-		if ns.Status.Phase != apicorev1.NamespaceActive {
+		if ns.Status.Phase != core.NamespaceActive {
 			return fmt.Errorf("invalid status: %v", ns.Status.Phase)
 		}
 	}

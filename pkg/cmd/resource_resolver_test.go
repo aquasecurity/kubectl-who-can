@@ -5,7 +5,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"k8s.io/apimachinery/pkg/api/meta"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apismeta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 	"testing"
@@ -25,10 +25,10 @@ func TestResourceResolver_Resolve(t *testing.T) {
 
 	client := fake.NewSimpleClientset()
 
-	client.Resources = []*v1.APIResourceList{
+	client.Resources = []*apismeta.APIResourceList{
 		{
 			GroupVersion: "v1",
-			APIResources: []v1.APIResource{
+			APIResources: []apismeta.APIResource{
 				{Version: "v1", Name: "pods", ShortNames: []string{"po"}, Verbs: []string{"list", "create", "delete"}},
 				{Version: "v1", Name: "pods/log", ShortNames: []string{}, Verbs: []string{"get"}},
 				{Version: "v1", Name: "services", ShortNames: []string{"svc"}, Verbs: []string{"list", "delete"}},
@@ -115,6 +115,16 @@ func TestResourceResolver_Resolve(t *testing.T) {
 			given:         given{verb: "list", resource: "pod"},
 			mappingResult: &mappingResult{err: errors.New("mapping failed")},
 			expected:      expected{err: errors.New("the server doesn't have a resource type \"pod\"")},
+		},
+		{
+			scenario: "L",
+			given:    given{verb: "*", resource: "pods"},
+			expected: expected{resource: "pods"},
+		},
+		{
+			scenario: "M",
+			given:    given{verb: "list", resource: "*"},
+			expected: expected{resource: "*"},
 		},
 	}
 
