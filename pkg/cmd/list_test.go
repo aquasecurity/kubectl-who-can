@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -312,28 +313,6 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-func TestMatch(t *testing.T) {
-	r := make(roles, 1)
-	entry := role{
-		name:          "hello",
-		isClusterRole: false,
-	}
-	r[entry] = struct{}{}
-
-	rr := rbac.RoleRef{
-		Kind: "Something else",
-		Name: "hello",
-	}
-	if !r.match(&rr) {
-		t.Error("Expected match")
-	}
-
-	rr.Kind = "ClusterRole"
-	if r.match(&rr) {
-		t.Error("Expected no match")
-	}
-}
-
 func TestWhoCan_checkAPIAccess(t *testing.T) {
 	const (
 		FooNs = "foo"
@@ -475,6 +454,124 @@ func TestWhoCan_printAPIAccessWarnings(t *testing.T) {
 			assert.Equal(t, tt.expectedOutput, buf.String())
 		})
 	}
+}
+
+func TestWhoCan_GetRolesFor(t *testing.T) {
+	// given
+	policyRuleMatcher := new(policyRuleMatcherMock)
+	client := fake.NewSimpleClientset()
+
+	action := Action{verb: "list", resource: "services"}
+
+	viewServicesRole := rbac.Role{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "view-services",
+		},
+		Rules: []rbac.PolicyRule{
+			{
+				Verbs:     []string{"get", "list"},
+				Resources: []string{"services"},
+			},
+		},
+	}
+
+	viewPodsRole := rbac.Role{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "view-pods",
+		},
+		Rules: []rbac.PolicyRule{
+			{
+				Verbs:     []string{"get", "list"},
+				Resources: []string{"services"},
+			},
+		},
+	}
+
+	client.Fake.PrependReactor("list", "roles", func(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
+		list := &rbac.RoleList{
+			Items: []rbac.Role{
+				viewServicesRole,
+				viewPodsRole,
+			},
+		}
+
+		return true, list, nil
+	})
+
+	policyRuleMatcher.On("MatchesRole", viewServicesRole, action).Return(true)
+	policyRuleMatcher.On("MatchesRole", viewPodsRole, action).Return(false)
+
+	wc := whoCan{
+		clientRBAC:        client.RbacV1(),
+		policyRuleMatcher: policyRuleMatcher,
+	}
+
+	// when
+	names, err := wc.GetRolesFor(action)
+
+	// then
+	require.NoError(t, err)
+	assert.EqualValues(t, map[string]struct{}{"view-services": {}}, names)
+	policyRuleMatcher.AssertExpectations(t)
+}
+
+func TestWhoCan_GetClusterRolesFor(t *testing.T) {
+	// given
+	policyRuleMatcher := new(policyRuleMatcherMock)
+	client := fake.NewSimpleClientset()
+
+	action := Action{verb: "get", resource: "/logs"}
+
+	getLogsRole := rbac.ClusterRole{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "get-logs",
+		},
+		Rules: []rbac.PolicyRule{
+			{
+				Verbs:           []string{"get"},
+				NonResourceURLs: []string{"/logs"},
+			},
+		},
+	}
+
+	getApiRole := rbac.ClusterRole{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "get-api",
+		},
+		Rules: []rbac.PolicyRule{
+			{
+				Verbs:           []string{"get"},
+				NonResourceURLs: []string{"/api"},
+			},
+		},
+	}
+
+	client.Fake.PrependReactor("list", "clusterroles", func(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
+		list := &rbac.ClusterRoleList{
+			Items: []rbac.ClusterRole{
+				getLogsRole,
+				getApiRole,
+			},
+		}
+
+		return true, list, nil
+	})
+
+	policyRuleMatcher.On("MatchesClusterRole", getLogsRole, action).Return(false)
+	policyRuleMatcher.On("MatchesClusterRole", getApiRole, action).Return(true)
+
+	wc := whoCan{
+		clientRBAC:        client.RbacV1(),
+		policyRuleMatcher: policyRuleMatcher,
+	}
+
+	// when
+	names, err := wc.GetClusterRolesFor(action)
+
+	// then
+	require.NoError(t, err)
+	assert.EqualValues(t, map[string]struct{}{"get-api": {}}, names)
+	policyRuleMatcher.AssertExpectations(t)
 }
 
 func TestWhoCan_output(t *testing.T) {

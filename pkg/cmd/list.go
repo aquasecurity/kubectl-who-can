@@ -63,12 +63,11 @@ type Action struct {
 	allNamespaces bool
 }
 
-type role struct {
-	name          string
-	isClusterRole bool
-}
+// roles is a set of Role names matching the specified Action.
+type roles map[string]struct{}
 
-type roles map[role]struct{}
+// clusterRoles is a set of ClusterRole names matching the specified Action
+type clusterRoles map[string]struct{}
 
 type whoCan struct {
 	Action
@@ -82,8 +81,6 @@ type whoCan struct {
 	resourceResolver   ResourceResolver
 	accessChecker      AccessChecker
 	policyRuleMatcher  PolicyRuleMatcher
-
-	r roles
 
 	clioptions.IOStreams
 }
@@ -262,28 +259,29 @@ func (w *whoCan) Check() error {
 		return fmt.Errorf("checking API access: %v", err)
 	}
 
-	w.r = make(map[role]struct{}, 10)
-
 	// Get the Roles that relate to the Verbs and Resources we are interested in
-	err = w.getRoles()
+	roleNames, err := w.GetRolesFor(w.Action)
 	if err != nil {
 		return fmt.Errorf("getting Roles: %v", err)
 	}
 
 	// Get the ClusterRoles that relate to the verbs and resources we are interested in
-	err = w.getClusterRoles()
+	clusterRoleNames, err := w.GetClusterRolesFor(w.Action)
 	if err != nil {
 		return fmt.Errorf("getting ClusterRoles: %v", err)
 	}
 
+	glog.V(4).Infof("Role names matching the action filter: %v", roleNames)
+	glog.V(4).Infof("ClusterRole names matching the action filter: %v", clusterRoleNames)
+
 	// Get the RoleBindings that relate to this set of Roles
-	roleBindings, err := w.getRoleBindings()
+	roleBindings, err := w.GetRoleBindings(roleNames)
 	if err != nil {
 		return fmt.Errorf("getting RoleBindings: %v", err)
 	}
 
 	// Get the ClusterRoleBindings that relate to this set of ClusterRoles
-	clusterRoleBindings, err := w.getClusterRoleBindings()
+	clusterRoleBindings, err := w.GetClusterRoleBindings(clusterRoleNames)
 	if err != nil {
 		return fmt.Errorf("getting ClusterRoleBindings: %v", err)
 	}
@@ -356,63 +354,53 @@ func (w *whoCan) printAPIAccessWarnings(warnings []string) {
 	}
 }
 
-func (w *whoCan) getRoles() error {
+// GetRolesFor returns a set of names of Roles matching the specified Action.
+func (w *whoCan) GetRolesFor(action Action) (roles, error) {
 	rl, err := w.clientRBAC.Roles(w.namespace).List(meta.ListOptions{})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	w.filterRoles(rl)
-	return nil
-}
+	roleNames := make(map[string]struct{}, 10)
 
-func (w *whoCan) filterRoles(roles *rbac.RoleList) {
-	for _, item := range roles.Items {
-		if w.policyRuleMatcher.MatchesRole(item, w.Action) {
-			newRole := role{
-				name:          item.Name,
-				isClusterRole: false,
-			}
-			if _, ok := w.r[newRole]; !ok {
-				w.r[newRole] = struct{}{}
+	for _, item := range rl.Items {
+		if w.policyRuleMatcher.MatchesRole(item, action) {
+			if _, ok := roleNames[item.Name]; !ok {
+				roleNames[item.Name] = struct{}{}
 			}
 		}
 	}
+
+	return roleNames, nil
 }
 
-func (w *whoCan) getClusterRoles() error {
+// GetClusterRolesFor returns a set of names of ClusterRoles matching the specified Action.
+func (w *whoCan) GetClusterRolesFor(action Action) (clusterRoles, error) {
 	crl, err := w.clientRBAC.ClusterRoles().List(meta.ListOptions{})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	w.filterClusterRoles(crl)
-	return nil
-}
+	cr := make(map[string]struct{}, 10)
 
-func (w *whoCan) filterClusterRoles(roles *rbac.ClusterRoleList) {
-	for _, item := range roles.Items {
-		if w.policyRuleMatcher.MatchesClusterRole(item, w.Action) {
-			newRole := role{
-				name:          item.Name,
-				isClusterRole: true,
-			}
-			if _, ok := w.r[newRole]; !ok {
-				w.r[newRole] = struct{}{}
+	for _, item := range crl.Items {
+		if w.policyRuleMatcher.MatchesClusterRole(item, action) {
+			if _, ok := cr[item.Name]; !ok {
+				cr[item.Name] = struct{}{}
 			}
 		}
 	}
+	return cr, nil
 }
 
-func (w *whoCan) getRoleBindings() (roleBindings []rbac.RoleBinding, err error) {
+func (w *whoCan) GetRoleBindings(r roles) (roleBindings []rbac.RoleBinding, err error) {
 	rbl, err := w.clientRBAC.RoleBindings(w.namespace).List(meta.ListOptions{})
 	if err != nil {
 		return
 	}
 
 	for _, roleBinding := range rbl.Items {
-		if w.r.match(&roleBinding.RoleRef) {
-			glog.V(1).Info(fmt.Sprintf("Match found: roleRef: %v", roleBinding.RoleRef))
+		if w.roleBindingMatches(&roleBinding, r) {
 			roleBindings = append(roleBindings, roleBinding)
 		}
 	}
@@ -420,15 +408,14 @@ func (w *whoCan) getRoleBindings() (roleBindings []rbac.RoleBinding, err error) 
 	return
 }
 
-func (w *whoCan) getClusterRoleBindings() (clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
+func (w *whoCan) GetClusterRoleBindings(c clusterRoles) (clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
 	rbl, err := w.clientRBAC.ClusterRoleBindings().List(meta.ListOptions{})
 	if err != nil {
 		return
 	}
 
 	for _, roleBinding := range rbl.Items {
-		if w.r.match(&roleBinding.RoleRef) {
-			glog.V(1).Info(fmt.Sprintf("Match found: roleRef: %v", roleBinding.RoleRef))
+		if w.clusterRoleBindingMatches(&roleBinding, c) {
 			clusterRoleBindings = append(clusterRoleBindings, roleBinding)
 		}
 	}
@@ -436,15 +423,18 @@ func (w *whoCan) getClusterRoleBindings() (clusterRoleBindings []rbac.ClusterRol
 	return
 }
 
-func (r roles) match(roleRef *rbac.RoleRef) bool {
-	tempRole := role{
-		name:          roleRef.Name,
-		isClusterRole: (roleRef.Kind == "ClusterRole"),
-	}
+// roleBindingMatches returns `true` if the given RoleBinding refers to any of the given roles, `false` otherwise.
+func (w *whoCan) roleBindingMatches(binding *rbac.RoleBinding, r roles) bool {
+	_, ok := r[binding.RoleRef.Name]
+	glog.V(3).Infof("RoleBinding `%s` matches Role? %t", binding.RoleRef.Name, ok)
+	return ok
+}
 
-	glog.V(3).Info(fmt.Sprintf("Testing against roleRef: %v", tempRole))
-
-	_, ok := r[tempRole]
+// clusterRoleBindingMatches returns `true` if the given ClusterRoleBinding refers to any of the given clusterRoles,
+// `false` otherwise.
+func (w *whoCan) clusterRoleBindingMatches(binding *rbac.ClusterRoleBinding, cr clusterRoles) bool {
+	_, ok := cr[binding.RoleRef.Name]
+	glog.V(3).Infof("ClusterRoleBinding `%s` matches ClusterRole? %t", binding.RoleRef.Name, ok)
 	return ok
 }
 
