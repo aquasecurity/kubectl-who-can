@@ -574,6 +574,104 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	policyRuleMatcher.AssertExpectations(t)
 }
 
+func TestWhoCan_GetRoleBindings(t *testing.T) {
+	client := fake.NewSimpleClientset()
+
+	roleNames := map[string]struct{}{"view-pods": {}}
+
+	viewPodsBnd := rbac.RoleBinding{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "view-pods-bnd",
+		},
+		RoleRef: rbac.RoleRef{
+			Kind: "RoleBinding",
+			Name: "view-pods",
+		},
+	}
+
+	viewConfigMapsBnd := rbac.RoleBinding{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "view-configmaps-bnd",
+		},
+		RoleRef: rbac.RoleRef{
+			Kind: "RoleBinding",
+			Name: "view-configmaps",
+		},
+	}
+
+	client.Fake.PrependReactor("list", "rolebindings", func(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
+		list := &rbac.RoleBindingList{
+			Items: []rbac.RoleBinding{
+				viewPodsBnd,
+				viewConfigMapsBnd,
+			},
+		}
+
+		return true, list, nil
+	})
+
+	wc := whoCan{
+		clientRBAC: client.RbacV1(),
+	}
+
+	// when
+	bindings, err := wc.GetRoleBindings(roleNames)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(bindings))
+	assert.Contains(t, bindings, viewPodsBnd)
+}
+
+func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
+	client := fake.NewSimpleClientset()
+
+	clusterRoleNames := map[string]struct{}{"get-healthz": {}}
+
+	getLogsBnd := rbac.ClusterRoleBinding{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "get-logs-bnd",
+		},
+		RoleRef: rbac.RoleRef{
+			Kind: "ClusterRoleBinding",
+			Name: "get-logs",
+		},
+	}
+
+	getHealthzBnd := rbac.ClusterRoleBinding{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "get-healthz-bnd",
+		},
+		RoleRef: rbac.RoleRef{
+			Kind: "ClusterRoleBinding",
+			Name: "get-healthz",
+		},
+	}
+
+	client.Fake.PrependReactor("list", "clusterrolebindings", func(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
+		list := &rbac.ClusterRoleBindingList{
+			Items: []rbac.ClusterRoleBinding{
+				getLogsBnd,
+				getHealthzBnd,
+			},
+		}
+
+		return true, list, nil
+	})
+
+	wc := whoCan{
+		clientRBAC: client.RbacV1(),
+	}
+
+	// when
+	bindings, err := wc.GetClusterRoleBindings(clusterRoleNames)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(bindings))
+	assert.Contains(t, bindings, getHealthzBnd)
+}
+
 func TestWhoCan_output(t *testing.T) {
 	data := []struct {
 		scenario string
