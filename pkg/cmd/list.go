@@ -274,8 +274,8 @@ func (w *whoCan) Check() error {
 	glog.V(4).Infof("Role names matching the action filter: %v", roleNames)
 	glog.V(4).Infof("ClusterRole names matching the action filter: %v", clusterRoleNames)
 
-	// Get the RoleBindings that relate to this set of Roles
-	roleBindings, err := w.GetRoleBindings(roleNames)
+	// Get the RoleBindings that relate to this set of Roles or ClusterRoles
+	roleBindings, err := w.GetRoleBindings(roleNames, clusterRoleNames)
 	if err != nil {
 		return fmt.Errorf("getting RoleBindings: %v", err)
 	}
@@ -393,16 +393,28 @@ func (w *whoCan) GetClusterRolesFor(action Action) (clusterRoles, error) {
 	return cr, nil
 }
 
-// GetRoleBindings returns the RoleBindings that refer to the given set of Role names.
-func (w *whoCan) GetRoleBindings(roleNames roles) (roleBindings []rbac.RoleBinding, err error) {
+// GetRoleBindings returns the RoleBindings that refer to the given set of Role names or ClusterRole names.
+func (w *whoCan) GetRoleBindings(roleNames roles, clusterRoleNames clusterRoles) (roleBindings []rbac.RoleBinding, err error) {
+	if w.namespace == core.NamespaceAll {
+		return
+	}
+
 	list, err := w.clientRBAC.RoleBindings(w.namespace).List(meta.ListOptions{})
 	if err != nil {
 		return
 	}
 
 	for _, roleBinding := range list.Items {
-		if _, ok := roleNames[roleBinding.RoleRef.Name]; ok {
-			roleBindings = append(roleBindings, roleBinding)
+		if roleBinding.RoleRef.Kind == "Role" {
+			if _, ok := roleNames[roleBinding.RoleRef.Name]; ok {
+				roleBindings = append(roleBindings, roleBinding)
+			}
+		} else if roleBinding.RoleRef.Kind == "ClusterRole" {
+			if _, ok := clusterRoleNames[roleBinding.RoleRef.Name]; ok {
+				roleBindings = append(roleBindings, roleBinding)
+			}
+		} else {
+			_, _ = fmt.Fprintf(w.Out, "Warning: Unrecognized RoleRef kind `%s` found in `%s` RoleBinding\n", roleBinding.RoleRef.Kind, roleBinding.Name)
 		}
 	}
 

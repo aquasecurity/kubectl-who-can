@@ -577,14 +577,17 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 func TestWhoCan_GetRoleBindings(t *testing.T) {
 	client := fake.NewSimpleClientset()
 
+	namespace := "foo"
 	roleNames := map[string]struct{}{"view-pods": {}}
+	clusterRoleNames := map[string]struct{}{"view-configmaps": {}}
 
 	viewPodsBnd := rbac.RoleBinding{
 		ObjectMeta: meta.ObjectMeta{
-			Name: "view-pods-bnd",
+			Name:      "view-pods-bnd",
+			Namespace: namespace,
 		},
 		RoleRef: rbac.RoleRef{
-			Kind: "RoleBinding",
+			Kind: "Role",
 			Name: "view-pods",
 		},
 	}
@@ -594,7 +597,7 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 			Name: "view-configmaps-bnd",
 		},
 		RoleRef: rbac.RoleRef{
-			Kind: "RoleBinding",
+			Kind: "ClusterRole",
 			Name: "view-configmaps",
 		},
 	}
@@ -612,15 +615,17 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 
 	wc := whoCan{
 		clientRBAC: client.RbacV1(),
+		Action:     Action{namespace: namespace},
 	}
 
 	// when
-	bindings, err := wc.GetRoleBindings(roleNames)
+	bindings, err := wc.GetRoleBindings(roleNames, clusterRoleNames)
 
 	// then
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(bindings))
+	assert.Equal(t, 2, len(bindings))
 	assert.Contains(t, bindings, viewPodsBnd)
+	assert.Contains(t, bindings, viewConfigMapsBnd)
 }
 
 func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
