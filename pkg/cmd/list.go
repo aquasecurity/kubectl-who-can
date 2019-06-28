@@ -51,14 +51,8 @@ NONRESOURCEURL is a partial URL that starts with "/".`
   kubectl who-can get /logs`
 )
 
-type role struct {
-	name          string
-	isClusterRole bool
-}
-
-type roles map[role]struct{}
-
-type whoCan struct {
+// Action represents an action a subject can be given permission to.
+type Action struct {
 	verb           string
 	resource       string
 	nonResourceURL string
@@ -67,6 +61,17 @@ type whoCan struct {
 
 	namespace     string
 	allNamespaces bool
+}
+
+type role struct {
+	name          string
+	isClusterRole bool
+}
+
+type roles map[role]struct{}
+
+type whoCan struct {
+	Action
 
 	configFlags     *clioptions.ConfigFlags
 	clientConfig    clientcmd.ClientConfig
@@ -76,6 +81,7 @@ type whoCan struct {
 	namespaceValidator NamespaceValidator
 	resourceResolver   ResourceResolver
 	accessChecker      AccessChecker
+	policyRuleMatcher  PolicyRuleMatcher
 
 	r roles
 
@@ -89,6 +95,7 @@ func NewWhoCanOptions(configFlags *clioptions.ConfigFlags,
 	namespaceValidator NamespaceValidator,
 	resourceResolver ResourceResolver,
 	accessChecker AccessChecker,
+	policyRuleMatcher PolicyRuleMatcher,
 	streams clioptions.IOStreams) *whoCan {
 	return &whoCan{
 		configFlags:        configFlags,
@@ -98,6 +105,7 @@ func NewWhoCanOptions(configFlags *clioptions.ConfigFlags,
 		namespaceValidator: namespaceValidator,
 		resourceResolver:   resourceResolver,
 		accessChecker:      accessChecker,
+		policyRuleMatcher:  policyRuleMatcher,
 		IOStreams:          streams,
 	}
 }
@@ -132,6 +140,7 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 		namespaceValidator,
 		resourceResolver,
 		accessChecker,
+		NewPolicyRuleMatcher(),
 		streams)
 
 	cmd := &cobra.Command{
@@ -179,6 +188,7 @@ func (w *whoCan) Complete(args []string) error {
 		if err != nil {
 			return fmt.Errorf("resolving resource: %v", err)
 		}
+		glog.V(3).Infof("Resolved resource `%s`", w.resource)
 	}
 
 	err = w.resolveNamespace()
@@ -197,11 +207,13 @@ func (w *whoCan) resolveArgs(args []string) error {
 	w.verb = args[0]
 	if strings.HasPrefix(args[1], "/") {
 		w.nonResourceURL = args[1]
+		glog.V(3).Infof("Resolved nonResourceURL `%s`", w.nonResourceURL)
 	} else {
 		resourceTokens := strings.SplitN(args[1], "/", 2)
 		w.resource = resourceTokens[0]
 		if len(resourceTokens) > 1 {
 			w.resourceName = resourceTokens[1]
+			glog.V(3).Infof("Resolved resourceName `%s`", w.resourceName)
 		}
 	}
 	return nil
@@ -258,16 +270,16 @@ func (w *whoCan) Check() error {
 		return fmt.Errorf("getting Roles: %v", err)
 	}
 
-	// Get the RoleBindings that relate to this set of Roles
-	roleBindings, err := w.getRoleBindings()
-	if err != nil {
-		return fmt.Errorf("getting RoleBindings: %v", err)
-	}
-
 	// Get the ClusterRoles that relate to the verbs and resources we are interested in
 	err = w.getClusterRoles()
 	if err != nil {
 		return fmt.Errorf("getting ClusterRoles: %v", err)
+	}
+
+	// Get the RoleBindings that relate to this set of Roles
+	roleBindings, err := w.getRoleBindings()
+	if err != nil {
+		return fmt.Errorf("getting RoleBindings: %v", err)
 	}
 
 	// Get the ClusterRoleBindings that relate to this set of ClusterRoles
@@ -356,12 +368,7 @@ func (w *whoCan) getRoles() error {
 
 func (w *whoCan) filterRoles(roles *rbac.RoleList) {
 	for _, item := range roles.Items {
-		for _, rule := range item.Rules {
-			if !w.policyRuleMatches(rule) {
-				glog.V(3).Infof("Role [%s] doesn't match policy filter", item.Name)
-				continue
-			}
-
+		if w.policyRuleMatcher.MatchesRole(item, w.Action) {
 			newRole := role{
 				name:          item.Name,
 				isClusterRole: false,
@@ -369,7 +376,6 @@ func (w *whoCan) filterRoles(roles *rbac.RoleList) {
 			if _, ok := w.r[newRole]; !ok {
 				w.r[newRole] = struct{}{}
 			}
-
 		}
 	}
 }
@@ -386,12 +392,7 @@ func (w *whoCan) getClusterRoles() error {
 
 func (w *whoCan) filterClusterRoles(roles *rbac.ClusterRoleList) {
 	for _, item := range roles.Items {
-		for _, rule := range item.Rules {
-			if !w.policyRuleMatches(rule) {
-				glog.V(3).Infof("ClusterRole [%s] doesn't match policy filter", item.Name)
-				continue
-			}
-
+		if w.policyRuleMatcher.MatchesClusterRole(item, w.Action) {
 			newRole := role{
 				name:          item.Name,
 				isClusterRole: true,
@@ -401,59 +402,6 @@ func (w *whoCan) filterClusterRoles(roles *rbac.ClusterRoleList) {
 			}
 		}
 	}
-}
-
-func (w *whoCan) policyRuleMatches(rule rbac.PolicyRule) bool {
-	if w.nonResourceURL != "" {
-		return w.matchesVerb(rule) &&
-			w.matchesNonResourceURL(rule)
-	}
-
-	return w.matchesVerb(rule) &&
-		w.matchesResource(rule) &&
-		w.matchesResourceName(rule)
-}
-
-func (w *whoCan) matchesVerb(rule rbac.PolicyRule) bool {
-	for _, verb := range rule.Verbs {
-		if verb == rbac.VerbAll || verb == w.verb {
-			return true
-		}
-	}
-	return false
-}
-
-func (w *whoCan) matchesResource(rule rbac.PolicyRule) bool {
-	for _, resource := range rule.Resources {
-		if resource == rbac.ResourceAll || resource == w.resource {
-			return true
-		}
-	}
-	return false
-}
-
-func (w *whoCan) matchesResourceName(rule rbac.PolicyRule) bool {
-	if w.resourceName == "" && len(rule.ResourceNames) == 0 {
-		return true
-	}
-	if len(rule.ResourceNames) == 0 {
-		return true
-	}
-	for _, name := range rule.ResourceNames {
-		if name == w.resourceName {
-			return true
-		}
-	}
-	return false
-}
-
-func (w *whoCan) matchesNonResourceURL(rule rbac.PolicyRule) bool {
-	for _, URL := range rule.NonResourceURLs {
-		if URL == w.nonResourceURL {
-			return true
-		}
-	}
-	return false
 }
 
 func (w *whoCan) getRoleBindings() (roleBindings []rbac.RoleBinding, err error) {
@@ -504,7 +452,7 @@ func (w *whoCan) output(roleBindings []rbac.RoleBinding, clusterRoleBindings []r
 	wr := new(tabwriter.Writer)
 	wr.Init(w.Out, 0, 8, 2, ' ', 0)
 
-	action := w.prettyPrintAction()
+	action := w.Action.PrettyPrint()
 
 	if w.resource != "" {
 		// NonResourceURL permissions can only be granted through ClusterRoles. Hence no point in printing RoleBindings section.
@@ -535,7 +483,7 @@ func (w *whoCan) output(roleBindings []rbac.RoleBinding, clusterRoleBindings []r
 	wr.Flush()
 }
 
-func (w *whoCan) prettyPrintAction() string {
+func (w Action) PrettyPrint() string {
 	if w.nonResourceURL != "" {
 		return fmt.Sprintf("%s %s", w.verb, w.nonResourceURL)
 	}

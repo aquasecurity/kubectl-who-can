@@ -54,6 +54,25 @@ func (cc *clientConfigMock) Namespace() (string, bool, error) {
 	return args.String(0), args.Bool(1), args.Error(2)
 }
 
+type policyRuleMatcherMock struct {
+	mock.Mock
+}
+
+func (prm *policyRuleMatcherMock) Matches(rule rbac.PolicyRule, action Action) bool {
+	args := prm.Called(rule, action)
+	return args.Bool(0)
+}
+
+func (prm *policyRuleMatcherMock) MatchesRole(role rbac.Role, action Action) bool {
+	args := prm.Called(role, action)
+	return args.Bool(0)
+}
+
+func (prm *policyRuleMatcherMock) MatchesClusterRole(role rbac.ClusterRole, action Action) bool {
+	args := prm.Called(role, action)
+	return args.Bool(0)
+}
+
 func TestComplete(t *testing.T) {
 
 	type currentContext struct {
@@ -71,8 +90,8 @@ func TestComplete(t *testing.T) {
 		resource    string
 		subResource string
 
-		result      string
-		err         error
+		result string
+		err    error
 	}
 
 	type expected struct {
@@ -187,6 +206,7 @@ func TestComplete(t *testing.T) {
 			namespaceValidator := new(namespaceValidatorMock)
 			accessChecker := new(accessCheckerMock)
 			resourceResolver := new(resourceResolverMock)
+			policyRuleMatcher := new(policyRuleMatcherMock)
 
 			if tt.resolution != nil {
 				resourceResolver.On("Resolve", tt.resolution.verb, tt.resolution.resource, tt.resolution.subResource).
@@ -204,6 +224,7 @@ func TestComplete(t *testing.T) {
 				namespaceValidator,
 				resourceResolver,
 				accessChecker,
+				policyRuleMatcher,
 				clioptions.NewTestIOStreamsDiscard())
 
 			// and
@@ -273,9 +294,11 @@ func TestValidate(t *testing.T) {
 			}
 
 			o := &whoCan{
-				nonResourceURL:     tt.nonResourceURL,
-				subResource:        tt.subResource,
-				namespace:          tt.namespace,
+				Action: Action{
+					nonResourceURL: tt.nonResourceURL,
+					subResource:    tt.subResource,
+					namespace:      tt.namespace,
+				},
 				namespaceValidator: namespaceValidator,
 			}
 
@@ -387,6 +410,7 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 			namespaceValidator := new(namespaceValidatorMock)
 			resourceResolver := new(resourceResolverMock)
 			accessChecker := new(accessCheckerMock)
+			policyRuleMatcher := new(policyRuleMatcherMock)
 			for _, prm := range tt.permissions {
 				accessChecker.On("IsAllowedTo", prm.verb, prm.resource, prm.namespace).
 					Return(prm.allowed, nil)
@@ -401,6 +425,7 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 				namespaceValidator,
 				resourceResolver,
 				accessChecker,
+				policyRuleMatcher,
 				clioptions.NewTestIOStreamsDiscard())
 			wc.namespace = tt.namespace
 
@@ -450,150 +475,6 @@ func TestWhoCan_printAPIAccessWarnings(t *testing.T) {
 			assert.Equal(t, tt.expectedOutput, buf.String())
 		})
 	}
-}
-
-func TestWhoCan_policyRuleMatches(t *testing.T) {
-
-	data := []struct {
-		scenario string
-
-		verb           string
-		resource       string
-		resourceName   string
-		nonResourceURL string
-
-		rule rbac.PolicyRule
-
-		matches bool
-	}{
-		{
-			scenario: "A",
-			verb:     "get", resource: "services", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"get", "list"},
-				Resources: []string{"services"},
-			},
-			matches: true,
-		},
-		{
-			scenario: "B",
-			verb:     "get", resource: "services", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"get", "list"},
-				Resources: []string{"*"},
-			},
-			matches: true,
-		},
-		{
-			scenario: "C",
-			verb:     "get", resource: "services", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"*"},
-				Resources: []string{"services"},
-			},
-			matches: true,
-		},
-		{
-			scenario: "D",
-			verb:     "get", resource: "services", resourceName: "mongodb",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"get", "list"},
-				Resources: []string{"services"},
-			},
-			matches: true,
-		},
-		{
-			scenario: "E",
-			verb:     "get", resource: "services", resourceName: "mongodb",
-			rule: rbac.PolicyRule{
-				Verbs:         []string{"get", "list"},
-				Resources:     []string{"services"},
-				ResourceNames: []string{"mongodb", "nginx"},
-			},
-			matches: true,
-		},
-		{
-			scenario: "F",
-			verb:     "get", resource: "services", resourceName: "mongodb",
-			rule: rbac.PolicyRule{
-				Verbs:         []string{"get", "list"},
-				Resources:     []string{"services"},
-				ResourceNames: []string{"nginx"},
-			},
-			matches: false,
-		},
-		{
-			scenario: "G",
-			verb:     "get", resource: "services", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:         []string{"get", "list"},
-				Resources:     []string{"services"},
-				ResourceNames: []string{"nginx"},
-			},
-			matches: false,
-		},
-		{
-			scenario: "H",
-			verb:     "get", resource: "pods", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"create"},
-				Resources: []string{"pods"},
-			},
-			matches: false,
-		},
-		{
-			scenario: "I",
-			verb:     "get", resource: "persistentvolumes", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"get"},
-				Resources: []string{"pods"},
-			},
-			matches: false,
-		},
-		{
-			scenario: "J",
-			verb:     "get", nonResourceURL: "/logs",
-			rule: rbac.PolicyRule{
-				Verbs:           []string{"get"},
-				NonResourceURLs: []string{"/logs"},
-			},
-			matches: true,
-		},
-		{
-			scenario: "K",
-			verb:     "get", nonResourceURL: "/logs",
-			rule: rbac.PolicyRule{
-				Verbs:           []string{"post"},
-				NonResourceURLs: []string{"/logs"},
-			},
-			matches: false,
-		},
-		{
-			scenario: "L",
-			verb:     "get", nonResourceURL: "/logs",
-			rule: rbac.PolicyRule{
-				Verbs:           []string{"get"},
-				NonResourceURLs: []string{"/api"},
-			},
-			matches: false,
-		},
-	}
-
-	for _, tt := range data {
-		t.Run(tt.scenario, func(t *testing.T) {
-
-			wc := whoCan{
-				verb:           tt.verb,
-				resource:       tt.resource,
-				resourceName:   tt.resourceName,
-				nonResourceURL: tt.nonResourceURL,
-			}
-			matches := wc.policyRuleMatches(tt.rule)
-
-			assert.Equal(t, tt.matches, matches)
-		})
-	}
-
 }
 
 func TestWhoCan_output(t *testing.T) {
@@ -671,11 +552,12 @@ Bob-and-Eve-can-view-pods  Eve      User
 			// given
 			streams, _, out, _ := clioptions.NewTestIOStreams()
 			wc := whoCan{
-				verb:           tt.verb,
-				resource:       tt.resource,
-				nonResourceURL: tt.nonResourceURL,
-				resourceName:   tt.resourceName,
-
+				Action: Action{
+					verb:           tt.verb,
+					resource:       tt.resource,
+					nonResourceURL: tt.nonResourceURL,
+					resourceName:   tt.resourceName,
+				},
 				IOStreams: streams,
 			}
 

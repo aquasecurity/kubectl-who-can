@@ -35,3 +35,4 @@ changelog:
       - '^docs:'
       - '^test:'
       - '^chore:'
+      - '^refactor:'
