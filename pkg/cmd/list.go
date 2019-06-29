@@ -49,6 +49,11 @@ NONRESOURCEURL is a partial URL that starts with "/".`
 
   # List who can access the URL /logs/
   kubectl who-can get /logs`
+
+	// RoleKind is the RoleRef's Kind referencing a Role.
+	RoleKind = "Role"
+	// ClusterRoleKind is the RoleRef's Kind referencing a ClusterRole.
+	ClusterRoleKind = "ClusterRole"
 )
 
 // Action represents an action a subject can be given permission to.
@@ -66,7 +71,7 @@ type Action struct {
 // roles is a set of Role names matching the specified Action.
 type roles map[string]struct{}
 
-// clusterRoles is a set of ClusterRole names matching the specified Action
+// clusterRoles is a set of ClusterRole names matching the specified Action.
 type clusterRoles map[string]struct{}
 
 type whoCan struct {
@@ -271,9 +276,6 @@ func (w *whoCan) Check() error {
 		return fmt.Errorf("getting ClusterRoles: %v", err)
 	}
 
-	glog.V(4).Infof("Role names matching the action filter: %v", roleNames)
-	glog.V(4).Infof("ClusterRole names matching the action filter: %v", clusterRoleNames)
-
 	// Get the RoleBindings that relate to this set of Roles or ClusterRoles
 	roleBindings, err := w.GetRoleBindings(roleNames, clusterRoleNames)
 	if err != nil {
@@ -395,6 +397,7 @@ func (w *whoCan) GetClusterRolesFor(action Action) (clusterRoles, error) {
 
 // GetRoleBindings returns the RoleBindings that refer to the given set of Role names or ClusterRole names.
 func (w *whoCan) GetRoleBindings(roleNames roles, clusterRoleNames clusterRoles) (roleBindings []rbac.RoleBinding, err error) {
+	// TODO I'm wondering if GetRoleBindings should be invoked at all when the --all-namespaces flag is specified?
 	if w.namespace == core.NamespaceAll {
 		return
 	}
@@ -405,11 +408,11 @@ func (w *whoCan) GetRoleBindings(roleNames roles, clusterRoleNames clusterRoles)
 	}
 
 	for _, roleBinding := range list.Items {
-		if roleBinding.RoleRef.Kind == "Role" {
+		if roleBinding.RoleRef.Kind == RoleKind {
 			if _, ok := roleNames[roleBinding.RoleRef.Name]; ok {
 				roleBindings = append(roleBindings, roleBinding)
 			}
-		} else if roleBinding.RoleRef.Kind == "ClusterRole" {
+		} else if roleBinding.RoleRef.Kind == ClusterRoleKind {
 			if _, ok := clusterRoleNames[roleBinding.RoleRef.Name]; ok {
 				roleBindings = append(roleBindings, roleBinding)
 			}
@@ -430,7 +433,6 @@ func (w *whoCan) GetClusterRoleBindings(clusterRoleNames clusterRoles) (clusterR
 
 	for _, roleBinding := range list.Items {
 		if _, ok := clusterRoleNames[roleBinding.RoleRef.Name]; ok {
-			//if w.clusterRoleBindingMatches(&roleBinding, clusterRoleNames) {
 			clusterRoleBindings = append(clusterRoleBindings, roleBinding)
 		}
 	}
