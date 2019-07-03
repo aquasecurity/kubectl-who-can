@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -54,6 +55,25 @@ func (cc *clientConfigMock) Namespace() (string, bool, error) {
 	return args.String(0), args.Bool(1), args.Error(2)
 }
 
+type policyRuleMatcherMock struct {
+	mock.Mock
+}
+
+func (prm *policyRuleMatcherMock) Matches(rule rbac.PolicyRule, action Action) bool {
+	args := prm.Called(rule, action)
+	return args.Bool(0)
+}
+
+func (prm *policyRuleMatcherMock) MatchesRole(role rbac.Role, action Action) bool {
+	args := prm.Called(role, action)
+	return args.Bool(0)
+}
+
+func (prm *policyRuleMatcherMock) MatchesClusterRole(role rbac.ClusterRole, action Action) bool {
+	args := prm.Called(role, action)
+	return args.Bool(0)
+}
+
 func TestComplete(t *testing.T) {
 
 	type currentContext struct {
@@ -71,8 +91,8 @@ func TestComplete(t *testing.T) {
 		resource    string
 		subResource string
 
-		result      string
-		err         error
+		result string
+		err    error
 	}
 
 	type expected struct {
@@ -187,6 +207,7 @@ func TestComplete(t *testing.T) {
 			namespaceValidator := new(namespaceValidatorMock)
 			accessChecker := new(accessCheckerMock)
 			resourceResolver := new(resourceResolverMock)
+			policyRuleMatcher := new(policyRuleMatcherMock)
 
 			if tt.resolution != nil {
 				resourceResolver.On("Resolve", tt.resolution.verb, tt.resolution.resource, tt.resolution.subResource).
@@ -204,6 +225,7 @@ func TestComplete(t *testing.T) {
 				namespaceValidator,
 				resourceResolver,
 				accessChecker,
+				policyRuleMatcher,
 				clioptions.NewTestIOStreamsDiscard())
 
 			// and
@@ -273,9 +295,11 @@ func TestValidate(t *testing.T) {
 			}
 
 			o := &whoCan{
-				nonResourceURL:     tt.nonResourceURL,
-				subResource:        tt.subResource,
-				namespace:          tt.namespace,
+				Action: Action{
+					nonResourceURL: tt.nonResourceURL,
+					subResource:    tt.subResource,
+					namespace:      tt.namespace,
+				},
 				namespaceValidator: namespaceValidator,
 			}
 
@@ -286,28 +310,6 @@ func TestValidate(t *testing.T) {
 			assert.Equal(t, tt.expectedErr, err)
 			namespaceValidator.AssertExpectations(t)
 		})
-	}
-}
-
-func TestMatch(t *testing.T) {
-	r := make(roles, 1)
-	entry := role{
-		name:          "hello",
-		isClusterRole: false,
-	}
-	r[entry] = struct{}{}
-
-	rr := rbac.RoleRef{
-		Kind: "Something else",
-		Name: "hello",
-	}
-	if !r.match(&rr) {
-		t.Error("Expected match")
-	}
-
-	rr.Kind = "ClusterRole"
-	if r.match(&rr) {
-		t.Error("Expected no match")
 	}
 }
 
@@ -387,6 +389,7 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 			namespaceValidator := new(namespaceValidatorMock)
 			resourceResolver := new(resourceResolverMock)
 			accessChecker := new(accessCheckerMock)
+			policyRuleMatcher := new(policyRuleMatcherMock)
 			for _, prm := range tt.permissions {
 				accessChecker.On("IsAllowedTo", prm.verb, prm.resource, prm.namespace).
 					Return(prm.allowed, nil)
@@ -401,6 +404,7 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 				namespaceValidator,
 				resourceResolver,
 				accessChecker,
+				policyRuleMatcher,
 				clioptions.NewTestIOStreamsDiscard())
 			wc.namespace = tt.namespace
 
@@ -452,148 +456,225 @@ func TestWhoCan_printAPIAccessWarnings(t *testing.T) {
 	}
 }
 
-func TestWhoCan_policyRuleMatches(t *testing.T) {
+func TestWhoCan_GetRolesFor(t *testing.T) {
+	// given
+	policyRuleMatcher := new(policyRuleMatcherMock)
+	client := fake.NewSimpleClientset()
 
-	data := []struct {
-		scenario string
+	action := Action{verb: "list", resource: "services"}
 
-		verb           string
-		resource       string
-		resourceName   string
-		nonResourceURL string
-
-		rule rbac.PolicyRule
-
-		matches bool
-	}{
-		{
-			scenario: "A",
-			verb:     "get", resource: "services", resourceName: "",
-			rule: rbac.PolicyRule{
+	viewServicesRole := rbac.Role{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "view-services",
+		},
+		Rules: []rbac.PolicyRule{
+			{
 				Verbs:     []string{"get", "list"},
 				Resources: []string{"services"},
 			},
-			matches: true,
 		},
-		{
-			scenario: "B",
-			verb:     "get", resource: "services", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"get", "list"},
-				Resources: []string{"*"},
-			},
-			matches: true,
+	}
+
+	viewPodsRole := rbac.Role{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "view-pods",
 		},
-		{
-			scenario: "C",
-			verb:     "get", resource: "services", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"*"},
-				Resources: []string{"services"},
-			},
-			matches: true,
-		},
-		{
-			scenario: "D",
-			verb:     "get", resource: "services", resourceName: "mongodb",
-			rule: rbac.PolicyRule{
+		Rules: []rbac.PolicyRule{
+			{
 				Verbs:     []string{"get", "list"},
 				Resources: []string{"services"},
 			},
-			matches: true,
 		},
-		{
-			scenario: "E",
-			verb:     "get", resource: "services", resourceName: "mongodb",
-			rule: rbac.PolicyRule{
-				Verbs:         []string{"get", "list"},
-				Resources:     []string{"services"},
-				ResourceNames: []string{"mongodb", "nginx"},
+	}
+
+	client.Fake.PrependReactor("list", "roles", func(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
+		list := &rbac.RoleList{
+			Items: []rbac.Role{
+				viewServicesRole,
+				viewPodsRole,
 			},
-			matches: true,
+		}
+
+		return true, list, nil
+	})
+
+	policyRuleMatcher.On("MatchesRole", viewServicesRole, action).Return(true)
+	policyRuleMatcher.On("MatchesRole", viewPodsRole, action).Return(false)
+
+	wc := whoCan{
+		clientRBAC:        client.RbacV1(),
+		policyRuleMatcher: policyRuleMatcher,
+	}
+
+	// when
+	names, err := wc.GetRolesFor(action)
+
+	// then
+	require.NoError(t, err)
+	assert.EqualValues(t, map[string]struct{}{"view-services": {}}, names)
+	policyRuleMatcher.AssertExpectations(t)
+}
+
+func TestWhoCan_GetClusterRolesFor(t *testing.T) {
+	// given
+	policyRuleMatcher := new(policyRuleMatcherMock)
+	client := fake.NewSimpleClientset()
+
+	action := Action{verb: "get", resource: "/logs"}
+
+	getLogsRole := rbac.ClusterRole{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "get-logs",
 		},
-		{
-			scenario: "F",
-			verb:     "get", resource: "services", resourceName: "mongodb",
-			rule: rbac.PolicyRule{
-				Verbs:         []string{"get", "list"},
-				Resources:     []string{"services"},
-				ResourceNames: []string{"nginx"},
-			},
-			matches: false,
-		},
-		{
-			scenario: "G",
-			verb:     "get", resource: "services", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:         []string{"get", "list"},
-				Resources:     []string{"services"},
-				ResourceNames: []string{"nginx"},
-			},
-			matches: false,
-		},
-		{
-			scenario: "H",
-			verb:     "get", resource: "pods", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"create"},
-				Resources: []string{"pods"},
-			},
-			matches: false,
-		},
-		{
-			scenario: "I",
-			verb:     "get", resource: "persistentvolumes", resourceName: "",
-			rule: rbac.PolicyRule{
-				Verbs:     []string{"get"},
-				Resources: []string{"pods"},
-			},
-			matches: false,
-		},
-		{
-			scenario: "J",
-			verb:     "get", nonResourceURL: "/logs",
-			rule: rbac.PolicyRule{
+		Rules: []rbac.PolicyRule{
+			{
 				Verbs:           []string{"get"},
 				NonResourceURLs: []string{"/logs"},
 			},
-			matches: true,
 		},
-		{
-			scenario: "K",
-			verb:     "get", nonResourceURL: "/logs",
-			rule: rbac.PolicyRule{
-				Verbs:           []string{"post"},
-				NonResourceURLs: []string{"/logs"},
-			},
-			matches: false,
+	}
+
+	getApiRole := rbac.ClusterRole{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "get-api",
 		},
-		{
-			scenario: "L",
-			verb:     "get", nonResourceURL: "/logs",
-			rule: rbac.PolicyRule{
+		Rules: []rbac.PolicyRule{
+			{
 				Verbs:           []string{"get"},
 				NonResourceURLs: []string{"/api"},
 			},
-			matches: false,
 		},
 	}
 
-	for _, tt := range data {
-		t.Run(tt.scenario, func(t *testing.T) {
+	client.Fake.PrependReactor("list", "clusterroles", func(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
+		list := &rbac.ClusterRoleList{
+			Items: []rbac.ClusterRole{
+				getLogsRole,
+				getApiRole,
+			},
+		}
 
-			wc := whoCan{
-				verb:           tt.verb,
-				resource:       tt.resource,
-				resourceName:   tt.resourceName,
-				nonResourceURL: tt.nonResourceURL,
-			}
-			matches := wc.policyRuleMatches(tt.rule)
+		return true, list, nil
+	})
 
-			assert.Equal(t, tt.matches, matches)
-		})
+	policyRuleMatcher.On("MatchesClusterRole", getLogsRole, action).Return(false)
+	policyRuleMatcher.On("MatchesClusterRole", getApiRole, action).Return(true)
+
+	wc := whoCan{
+		clientRBAC:        client.RbacV1(),
+		policyRuleMatcher: policyRuleMatcher,
 	}
 
+	// when
+	names, err := wc.GetClusterRolesFor(action)
+
+	// then
+	require.NoError(t, err)
+	assert.EqualValues(t, map[string]struct{}{"get-api": {}}, names)
+	policyRuleMatcher.AssertExpectations(t)
+}
+
+func TestWhoCan_GetRoleBindings(t *testing.T) {
+	client := fake.NewSimpleClientset()
+
+	namespace := "foo"
+	roleNames := map[string]struct{}{"view-pods": {}}
+	clusterRoleNames := map[string]struct{}{"view-configmaps": {}}
+
+	viewPodsBnd := rbac.RoleBinding{
+		ObjectMeta: meta.ObjectMeta{
+			Name:      "view-pods-bnd",
+			Namespace: namespace,
+		},
+		RoleRef: rbac.RoleRef{
+			Kind: "Role",
+			Name: "view-pods",
+		},
+	}
+
+	viewConfigMapsBnd := rbac.RoleBinding{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "view-configmaps-bnd",
+		},
+		RoleRef: rbac.RoleRef{
+			Kind: "ClusterRole",
+			Name: "view-configmaps",
+		},
+	}
+
+	client.Fake.PrependReactor("list", "rolebindings", func(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
+		list := &rbac.RoleBindingList{
+			Items: []rbac.RoleBinding{
+				viewPodsBnd,
+				viewConfigMapsBnd,
+			},
+		}
+
+		return true, list, nil
+	})
+
+	wc := whoCan{
+		clientRBAC: client.RbacV1(),
+		Action:     Action{namespace: namespace},
+	}
+
+	// when
+	bindings, err := wc.GetRoleBindings(roleNames, clusterRoleNames)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(bindings))
+	assert.Contains(t, bindings, viewPodsBnd)
+	assert.Contains(t, bindings, viewConfigMapsBnd)
+}
+
+func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
+	client := fake.NewSimpleClientset()
+
+	clusterRoleNames := map[string]struct{}{"get-healthz": {}}
+
+	getLogsBnd := rbac.ClusterRoleBinding{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "get-logs-bnd",
+		},
+		RoleRef: rbac.RoleRef{
+			Kind: "ClusterRoleBinding",
+			Name: "get-logs",
+		},
+	}
+
+	getHealthzBnd := rbac.ClusterRoleBinding{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "get-healthz-bnd",
+		},
+		RoleRef: rbac.RoleRef{
+			Kind: "ClusterRoleBinding",
+			Name: "get-healthz",
+		},
+	}
+
+	client.Fake.PrependReactor("list", "clusterrolebindings", func(action clientTesting.Action) (handled bool, ret runtime.Object, err error) {
+		list := &rbac.ClusterRoleBindingList{
+			Items: []rbac.ClusterRoleBinding{
+				getLogsBnd,
+				getHealthzBnd,
+			},
+		}
+
+		return true, list, nil
+	})
+
+	wc := whoCan{
+		clientRBAC: client.RbacV1(),
+	}
+
+	// when
+	bindings, err := wc.GetClusterRoleBindings(clusterRoleNames)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(bindings))
+	assert.Contains(t, bindings, getHealthzBnd)
 }
 
 func TestWhoCan_output(t *testing.T) {
@@ -671,11 +752,12 @@ Bob-and-Eve-can-view-pods  Eve      User
 			// given
 			streams, _, out, _ := clioptions.NewTestIOStreams()
 			wc := whoCan{
-				verb:           tt.verb,
-				resource:       tt.resource,
-				nonResourceURL: tt.nonResourceURL,
-				resourceName:   tt.resourceName,
-
+				Action: Action{
+					verb:           tt.verb,
+					resource:       tt.resource,
+					nonResourceURL: tt.nonResourceURL,
+					resourceName:   tt.resourceName,
+				},
 				IOStreams: streams,
 			}
 

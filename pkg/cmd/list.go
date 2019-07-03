@@ -49,16 +49,15 @@ NONRESOURCEURL is a partial URL that starts with "/".`
 
   # List who can access the URL /logs/
   kubectl who-can get /logs`
+
+	// RoleKind is the RoleRef's Kind referencing a Role.
+	RoleKind = "Role"
+	// ClusterRoleKind is the RoleRef's Kind referencing a ClusterRole.
+	ClusterRoleKind = "ClusterRole"
 )
 
-type role struct {
-	name          string
-	isClusterRole bool
-}
-
-type roles map[role]struct{}
-
-type whoCan struct {
+// Action represents an action a subject can be given permission to.
+type Action struct {
 	verb           string
 	resource       string
 	nonResourceURL string
@@ -67,6 +66,16 @@ type whoCan struct {
 
 	namespace     string
 	allNamespaces bool
+}
+
+// roles is a set of Role names matching the specified Action.
+type roles map[string]struct{}
+
+// clusterRoles is a set of ClusterRole names matching the specified Action.
+type clusterRoles map[string]struct{}
+
+type whoCan struct {
+	Action
 
 	configFlags     *clioptions.ConfigFlags
 	clientConfig    clientcmd.ClientConfig
@@ -76,8 +85,7 @@ type whoCan struct {
 	namespaceValidator NamespaceValidator
 	resourceResolver   ResourceResolver
 	accessChecker      AccessChecker
-
-	r roles
+	policyRuleMatcher  PolicyRuleMatcher
 
 	clioptions.IOStreams
 }
@@ -89,6 +97,7 @@ func NewWhoCanOptions(configFlags *clioptions.ConfigFlags,
 	namespaceValidator NamespaceValidator,
 	resourceResolver ResourceResolver,
 	accessChecker AccessChecker,
+	policyRuleMatcher PolicyRuleMatcher,
 	streams clioptions.IOStreams) *whoCan {
 	return &whoCan{
 		configFlags:        configFlags,
@@ -98,6 +107,7 @@ func NewWhoCanOptions(configFlags *clioptions.ConfigFlags,
 		namespaceValidator: namespaceValidator,
 		resourceResolver:   resourceResolver,
 		accessChecker:      accessChecker,
+		policyRuleMatcher:  policyRuleMatcher,
 		IOStreams:          streams,
 	}
 }
@@ -132,6 +142,7 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 		namespaceValidator,
 		resourceResolver,
 		accessChecker,
+		NewPolicyRuleMatcher(),
 		streams)
 
 	cmd := &cobra.Command{
@@ -179,6 +190,7 @@ func (w *whoCan) Complete(args []string) error {
 		if err != nil {
 			return fmt.Errorf("resolving resource: %v", err)
 		}
+		glog.V(3).Infof("Resolved resource `%s`", w.resource)
 	}
 
 	err = w.resolveNamespace()
@@ -197,11 +209,13 @@ func (w *whoCan) resolveArgs(args []string) error {
 	w.verb = args[0]
 	if strings.HasPrefix(args[1], "/") {
 		w.nonResourceURL = args[1]
+		glog.V(3).Infof("Resolved nonResourceURL `%s`", w.nonResourceURL)
 	} else {
 		resourceTokens := strings.SplitN(args[1], "/", 2)
 		w.resource = resourceTokens[0]
 		if len(resourceTokens) > 1 {
 			w.resourceName = resourceTokens[1]
+			glog.V(3).Infof("Resolved resourceName `%s`", w.resourceName)
 		}
 	}
 	return nil
@@ -250,28 +264,26 @@ func (w *whoCan) Check() error {
 		return fmt.Errorf("checking API access: %v", err)
 	}
 
-	w.r = make(map[role]struct{}, 10)
-
 	// Get the Roles that relate to the Verbs and Resources we are interested in
-	err = w.getRoles()
+	roleNames, err := w.GetRolesFor(w.Action)
 	if err != nil {
 		return fmt.Errorf("getting Roles: %v", err)
 	}
 
-	// Get the RoleBindings that relate to this set of Roles
-	roleBindings, err := w.getRoleBindings()
-	if err != nil {
-		return fmt.Errorf("getting RoleBindings: %v", err)
-	}
-
 	// Get the ClusterRoles that relate to the verbs and resources we are interested in
-	err = w.getClusterRoles()
+	clusterRoleNames, err := w.GetClusterRolesFor(w.Action)
 	if err != nil {
 		return fmt.Errorf("getting ClusterRoles: %v", err)
 	}
 
+	// Get the RoleBindings that relate to this set of Roles or ClusterRoles
+	roleBindings, err := w.GetRoleBindings(roleNames, clusterRoleNames)
+	if err != nil {
+		return fmt.Errorf("getting RoleBindings: %v", err)
+	}
+
 	// Get the ClusterRoleBindings that relate to this set of ClusterRoles
-	clusterRoleBindings, err := w.getClusterRoleBindings()
+	clusterRoleBindings, err := w.GetClusterRoleBindings(clusterRoleNames)
 	if err != nil {
 		return fmt.Errorf("getting ClusterRoleBindings: %v", err)
 	}
@@ -344,143 +356,83 @@ func (w *whoCan) printAPIAccessWarnings(warnings []string) {
 	}
 }
 
-func (w *whoCan) getRoles() error {
+// GetRolesFor returns a set of names of Roles matching the specified Action.
+func (w *whoCan) GetRolesFor(action Action) (roles, error) {
 	rl, err := w.clientRBAC.Roles(w.namespace).List(meta.ListOptions{})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	w.filterRoles(rl)
-	return nil
-}
+	roleNames := make(map[string]struct{}, 10)
 
-func (w *whoCan) filterRoles(roles *rbac.RoleList) {
-	for _, item := range roles.Items {
-		for _, rule := range item.Rules {
-			if !w.policyRuleMatches(rule) {
-				glog.V(3).Infof("Role [%s] doesn't match policy filter", item.Name)
-				continue
+	for _, item := range rl.Items {
+		if w.policyRuleMatcher.MatchesRole(item, action) {
+			if _, ok := roleNames[item.Name]; !ok {
+				roleNames[item.Name] = struct{}{}
 			}
-
-			newRole := role{
-				name:          item.Name,
-				isClusterRole: false,
-			}
-			if _, ok := w.r[newRole]; !ok {
-				w.r[newRole] = struct{}{}
-			}
-
 		}
 	}
+
+	return roleNames, nil
 }
 
-func (w *whoCan) getClusterRoles() error {
+// GetClusterRolesFor returns a set of names of ClusterRoles matching the specified Action.
+func (w *whoCan) GetClusterRolesFor(action Action) (clusterRoles, error) {
 	crl, err := w.clientRBAC.ClusterRoles().List(meta.ListOptions{})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	w.filterClusterRoles(crl)
-	return nil
-}
+	cr := make(map[string]struct{}, 10)
 
-func (w *whoCan) filterClusterRoles(roles *rbac.ClusterRoleList) {
-	for _, item := range roles.Items {
-		for _, rule := range item.Rules {
-			if !w.policyRuleMatches(rule) {
-				glog.V(3).Infof("ClusterRole [%s] doesn't match policy filter", item.Name)
-				continue
-			}
-
-			newRole := role{
-				name:          item.Name,
-				isClusterRole: true,
-			}
-			if _, ok := w.r[newRole]; !ok {
-				w.r[newRole] = struct{}{}
+	for _, item := range crl.Items {
+		if w.policyRuleMatcher.MatchesClusterRole(item, action) {
+			if _, ok := cr[item.Name]; !ok {
+				cr[item.Name] = struct{}{}
 			}
 		}
 	}
+	return cr, nil
 }
 
-func (w *whoCan) policyRuleMatches(rule rbac.PolicyRule) bool {
-	if w.nonResourceURL != "" {
-		return w.matchesVerb(rule) &&
-			w.matchesNonResourceURL(rule)
+// GetRoleBindings returns the RoleBindings that refer to the given set of Role names or ClusterRole names.
+func (w *whoCan) GetRoleBindings(roleNames roles, clusterRoleNames clusterRoles) (roleBindings []rbac.RoleBinding, err error) {
+	// TODO I'm wondering if GetRoleBindings should be invoked at all when the --all-namespaces flag is specified?
+	if w.namespace == core.NamespaceAll {
+		return
 	}
 
-	return w.matchesVerb(rule) &&
-		w.matchesResource(rule) &&
-		w.matchesResourceName(rule)
-}
-
-func (w *whoCan) matchesVerb(rule rbac.PolicyRule) bool {
-	for _, verb := range rule.Verbs {
-		if verb == rbac.VerbAll || verb == w.verb {
-			return true
-		}
-	}
-	return false
-}
-
-func (w *whoCan) matchesResource(rule rbac.PolicyRule) bool {
-	for _, resource := range rule.Resources {
-		if resource == rbac.ResourceAll || resource == w.resource {
-			return true
-		}
-	}
-	return false
-}
-
-func (w *whoCan) matchesResourceName(rule rbac.PolicyRule) bool {
-	if w.resourceName == "" && len(rule.ResourceNames) == 0 {
-		return true
-	}
-	if len(rule.ResourceNames) == 0 {
-		return true
-	}
-	for _, name := range rule.ResourceNames {
-		if name == w.resourceName {
-			return true
-		}
-	}
-	return false
-}
-
-func (w *whoCan) matchesNonResourceURL(rule rbac.PolicyRule) bool {
-	for _, URL := range rule.NonResourceURLs {
-		if URL == w.nonResourceURL {
-			return true
-		}
-	}
-	return false
-}
-
-func (w *whoCan) getRoleBindings() (roleBindings []rbac.RoleBinding, err error) {
-	rbl, err := w.clientRBAC.RoleBindings(w.namespace).List(meta.ListOptions{})
+	list, err := w.clientRBAC.RoleBindings(w.namespace).List(meta.ListOptions{})
 	if err != nil {
 		return
 	}
 
-	for _, roleBinding := range rbl.Items {
-		if w.r.match(&roleBinding.RoleRef) {
-			glog.V(1).Info(fmt.Sprintf("Match found: roleRef: %v", roleBinding.RoleRef))
-			roleBindings = append(roleBindings, roleBinding)
+	for _, roleBinding := range list.Items {
+		if roleBinding.RoleRef.Kind == RoleKind {
+			if _, ok := roleNames[roleBinding.RoleRef.Name]; ok {
+				roleBindings = append(roleBindings, roleBinding)
+			}
+		} else if roleBinding.RoleRef.Kind == ClusterRoleKind {
+			if _, ok := clusterRoleNames[roleBinding.RoleRef.Name]; ok {
+				roleBindings = append(roleBindings, roleBinding)
+			}
+		} else {
+			_, _ = fmt.Fprintf(w.Out, "Warning: Unrecognized RoleRef kind `%s` found in `%s` RoleBinding\n", roleBinding.RoleRef.Kind, roleBinding.Name)
 		}
 	}
 
 	return
 }
 
-func (w *whoCan) getClusterRoleBindings() (clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
-	rbl, err := w.clientRBAC.ClusterRoleBindings().List(meta.ListOptions{})
+// GetClusterRoleBindings returns the ClusterRoleBindings that refer to the given sef of ClusterRole names.
+func (w *whoCan) GetClusterRoleBindings(clusterRoleNames clusterRoles) (clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
+	list, err := w.clientRBAC.ClusterRoleBindings().List(meta.ListOptions{})
 	if err != nil {
 		return
 	}
 
-	for _, roleBinding := range rbl.Items {
-		if w.r.match(&roleBinding.RoleRef) {
-			glog.V(1).Info(fmt.Sprintf("Match found: roleRef: %v", roleBinding.RoleRef))
+	for _, roleBinding := range list.Items {
+		if _, ok := clusterRoleNames[roleBinding.RoleRef.Name]; ok {
 			clusterRoleBindings = append(clusterRoleBindings, roleBinding)
 		}
 	}
@@ -488,23 +440,11 @@ func (w *whoCan) getClusterRoleBindings() (clusterRoleBindings []rbac.ClusterRol
 	return
 }
 
-func (r roles) match(roleRef *rbac.RoleRef) bool {
-	tempRole := role{
-		name:          roleRef.Name,
-		isClusterRole: (roleRef.Kind == "ClusterRole"),
-	}
-
-	glog.V(3).Info(fmt.Sprintf("Testing against roleRef: %v", tempRole))
-
-	_, ok := r[tempRole]
-	return ok
-}
-
 func (w *whoCan) output(roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
 	wr := new(tabwriter.Writer)
 	wr.Init(w.Out, 0, 8, 2, ' ', 0)
 
-	action := w.prettyPrintAction()
+	action := w.Action.PrettyPrint()
 
 	if w.resource != "" {
 		// NonResourceURL permissions can only be granted through ClusterRoles. Hence no point in printing RoleBindings section.
@@ -535,7 +475,7 @@ func (w *whoCan) output(roleBindings []rbac.RoleBinding, clusterRoleBindings []r
 	wr.Flush()
 }
 
-func (w *whoCan) prettyPrintAction() string {
+func (w Action) PrettyPrint() string {
 	if w.nonResourceURL != "" {
 		return fmt.Sprintf("%s %s", w.verb, w.nonResourceURL)
 	}
