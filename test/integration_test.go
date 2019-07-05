@@ -7,9 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 	core "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
+	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+	clientext "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1beta1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clioptions "k8s.io/cli-runtime/pkg/genericclioptions"
-	"k8s.io/client-go/kubernetes"
+	client "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"strings"
@@ -28,10 +30,14 @@ func TestIntegration(t *testing.T) {
 	config, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
 	require.NoError(t, err)
 
-	kubeClient, err := kubernetes.NewForConfig(config)
+	coreClient, err := client.NewForConfig(config)
 	require.NoError(t, err)
 
-	configureRBAC(t, kubeClient)
+	extClient, err := clientext.NewForConfig(config)
+	require.NoError(t, err)
+
+	createCRDs(t, extClient.CustomResourceDefinitions())
+	configureRBAC(t, coreClient)
 
 	data := []struct {
 		scenario string
@@ -68,6 +74,13 @@ func TestIntegration(t *testing.T) {
 				"devops-can-scale-workloads  default    devops   Group",
 			},
 		},
+		{
+			scenario: "Should print who can list pods in group `metrics.k8s.io`",
+			args:     []string{"list", "pods.metrics.k8s.io"},
+			output: []string{
+				// TODO Add expectations
+			},
+		},
 	}
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
@@ -101,10 +114,32 @@ func prettyPrintWhoCanOutput(t *testing.T, args []string, out *bytes.Buffer) {
 	}
 }
 
-func configureRBAC(t *testing.T, client kubernetes.Interface) {
+func createCRDs(t *testing.T, client clientext.CustomResourceDefinitionInterface) {
+	t.Helper()
+	_, err := client.Create(&apiext.CustomResourceDefinition{
+		ObjectMeta: meta.ObjectMeta{
+			Name: "pods.metrics.k8s.io",
+		},
+		Spec: apiext.CustomResourceDefinitionSpec{
+			Scope: apiext.NamespaceScoped,
+			Group: "metrics.k8s.io",
+			// TODO Use Versions filed to be a good citizen
+			Version: "v1beta1",
+			Names: apiext.CustomResourceDefinitionNames{
+				Kind:       "PodMetrics",
+				Singular:   "pod",
+				Plural:     "pods",
+				ShortNames: []string{"po"},
+			},
+		},
+	})
+	require.NoError(t, err)
+}
+
+func configureRBAC(t *testing.T, coreClient client.Interface) {
 	t.Helper()
 
-	clientRBAC := client.RbacV1()
+	clientRBAC := coreClient.RbacV1()
 
 	const namespaceFoo = "foo"
 
@@ -132,6 +167,17 @@ func configureRBAC(t *testing.T, client kubernetes.Interface) {
 	})
 	require.NoError(t, err)
 
+	_, err = clientRBAC.ClusterRoles().Create(&rbac.ClusterRole{
+		ObjectMeta: meta.ObjectMeta{Name: "view-pod-metrics"},
+		Rules: []rbac.PolicyRule{
+			{
+				Verbs:     []string{"get", "list"},
+				APIGroups: []string{"metrics.k8s.io"},
+				Resources: []string{"pods"},
+			},
+		},
+	})
+
 	_, err = clientRBAC.ClusterRoleBindings().Create(&rbac.ClusterRoleBinding{
 		ObjectMeta: meta.ObjectMeta{Name: "bob-can-get-logs"},
 		RoleRef: rbac.RoleRef{
@@ -143,6 +189,17 @@ func configureRBAC(t *testing.T, client kubernetes.Interface) {
 		},
 	})
 	require.NoError(t, err)
+
+	_, err = clientRBAC.ClusterRoleBindings().Create(&rbac.ClusterRoleBinding{
+		ObjectMeta: meta.ObjectMeta{Name: "spiderman-can-view-pod-metrics"},
+		RoleRef: rbac.RoleRef{
+			Name: "view-pod-metrics",
+			Kind: cmd.ClusterRoleKind,
+		},
+		Subjects: []rbac.Subject{
+			{Kind: rbac.UserKind, Name: "Spiderman"},
+		},
+	})
 
 	// Configure default namespace
 	_, err = clientRBAC.Roles(core.NamespaceDefault).Create(&rbac.Role{
@@ -204,7 +261,7 @@ func configureRBAC(t *testing.T, client kubernetes.Interface) {
 	})
 
 	// Configure foo namespace
-	_, err = client.CoreV1().Namespaces().Create(&core.Namespace{
+	_, err = coreClient.CoreV1().Namespaces().Create(&core.Namespace{
 		ObjectMeta: meta.ObjectMeta{Name: namespaceFoo},
 	})
 	require.NoError(t, err)
