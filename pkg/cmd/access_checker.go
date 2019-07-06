@@ -17,6 +17,7 @@ type accessChecker struct {
 	client clientauthz.SelfSubjectAccessReviewInterface
 }
 
+// NewAccessChecker constructs the default AccessChecker.
 func NewAccessChecker(client clientauthz.SelfSubjectAccessReviewInterface) AccessChecker {
 	return &accessChecker{
 		client: client,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	clioptions "k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
 	clientcore "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -24,13 +25,17 @@ const (
 	whoCanLong  = `Shows which users, groups and service accounts can perform a given verb on a given resource type.
 
 VERB is a logical Kubernetes API verb like 'get', 'list', 'watch', 'delete', etc.
-TYPE is a Kubernetes resource. Shortcuts, such as 'pod' or 'po' will be resolved. NAME is the name of a particular Kubernetes resource.
+TYPE is a Kubernetes resource. Shortcuts and API groups will be resolved, e.g. 'po' or 'pods.metrics.k8s.io'.
+NAME is the name of a particular Kubernetes resource.
 NONRESOURCEURL is a partial URL that starts with "/".`
 	whoCanExample = `  # List who can get pods in any namespace
   kubectl who-can get pods --all-namespaces
 
   # List who can create pods in the current namespace
   kubectl who-can create pods
+
+  # List who can get pods specifying the API group
+  kubectl who-can get pods.metrics.k8s.io
 
   # List who can create services in namespace "foo"
   kubectl who-can create services -n foo
@@ -63,6 +68,7 @@ type Action struct {
 	nonResourceURL string
 	subResource    string
 	resourceName   string
+	gr            schema.GroupResource
 
 	namespace     string
 	allNamespaces bool
@@ -186,7 +192,7 @@ func (w *whoCan) Complete(args []string) error {
 	}
 
 	if w.resource != "" {
-		w.resource, err = w.resourceResolver.Resolve(w.verb, w.resource, w.subResource)
+		w.gr, err = w.resourceResolver.Resolve(w.verb, w.resource, w.subResource)
 		if err != nil {
 			return fmt.Errorf("resolving resource: %v", err)
 		}

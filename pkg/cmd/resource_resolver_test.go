@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	rbac "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	apismeta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -23,125 +24,143 @@ func (mm *mapperMock) ResourceFor(resource schema.GroupVersionResource) (schema.
 
 func TestResourceResolver_Resolve(t *testing.T) {
 
+	podsGVR := schema.GroupVersionResource{Version: "v1", Resource: "pods"}
+	podsGR := schema.GroupResource{Resource: "pods"}
+	deploymentsGVR := schema.GroupVersionResource{Group: "extensions", Version: "v1beta1", Resource: "deployments"}
+	deploymentsGR := schema.GroupResource{Group: "extensions", Resource: "deployments"}
+
 	client := fake.NewSimpleClientset()
 
 	client.Resources = []*apismeta.APIResourceList{
 		{
 			GroupVersion: "v1",
 			APIResources: []apismeta.APIResource{
-				{Version: "v1", Name: "pods", ShortNames: []string{"po"}, Verbs: []string{"list", "create", "delete"}},
-				{Version: "v1", Name: "pods/log", ShortNames: []string{}, Verbs: []string{"get"}},
-				{Version: "v1", Name: "services", ShortNames: []string{"svc"}, Verbs: []string{"list", "delete"}},
+				{Group: "", Version: "v1", Name: "pods", ShortNames: []string{"po"}, Verbs: []string{"list", "create", "delete"}},
+				{Group: "", Version: "v1", Name: "pods/log", ShortNames: []string{}, Verbs: []string{"get"}},
+				{Group: "", Version: "v1", Name: "services", ShortNames: []string{"svc"}, Verbs: []string{"list", "delete"}},
+			},
+		},
+		{
+			GroupVersion: "extensions/v1beta1",
+			APIResources: []apismeta.APIResource{
+				{Group: "extensions", Version: "v1beta1", Name: "deployments", Verbs: []string{"list", "get"}},
+				{Group: "extensions", Version: "v1beta1", Name: "deployments/scale", Verbs: []string{"update", "patch"}},
 			},
 		},
 	}
 
-	type given struct {
-		verb        string
-		resource    string
-		subResource string
-	}
-
 	type mappingResult struct {
-		out string
-		err error
+		argGVR schema.GroupVersionResource
+
+		returnGVR   schema.GroupVersionResource
+		returnError error
 	}
 
 	type expected struct {
-		resource string
-		err      error
+		gr  schema.GroupResource
+		err error
 	}
 
 	data := []struct {
-		scenario string
-		given
-		*mappingResult
+		scenario      string
+		action        Action
+		mappingResult *mappingResult
 		expected
 	}{
 		{
 			scenario: "A",
-			given:    given{verb: "list", resource: "pods"},
-			expected: expected{resource: "pods"},
+			action:   Action{verb: "list", resource: "pods"},
+			mappingResult: &mappingResult{
+				argGVR:    schema.GroupVersionResource{Resource: "pods"},
+				returnGVR: podsGVR,
+			},
+			expected: expected{gr: podsGR},
 		},
 		{
 			scenario: "B",
-			given:    given{verb: "list", resource: "po"},
-			expected: expected{resource: "pods"},
+			action:   Action{verb: "list", resource: "po"},
+			mappingResult: &mappingResult{
+				argGVR:    schema.GroupVersionResource{Resource: "po"},
+				returnGVR: podsGVR,
+			},
+			expected: expected{gr: podsGR},
 		},
 		{
 			scenario: "C",
-			given:    given{verb: "eat", resource: "pods"},
+			action:   Action{verb: "eat", resource: "pods"},
+			mappingResult: &mappingResult{
+				argGVR:    schema.GroupVersionResource{Resource: "pods"},
+				returnGVR: podsGVR,
+			},
 			expected: expected{err: errors.New("the \"pods\" resource does not support the \"eat\" verb, only [list create delete]")},
 		},
 		{
 			scenario: "D",
-			given:    given{verb: "list", resource: "services"},
-			expected: expected{resource: "services"},
+			action:   Action{verb: "list", resource: "deployments.extensions"},
+			mappingResult: &mappingResult{
+				argGVR:    schema.GroupVersionResource{Group: "extensions", Version: "", Resource: "deployments"},
+				returnGVR: deploymentsGVR,
+			},
+			expected: expected{gr: deploymentsGR},
 		},
 		{
 			scenario: "E",
-			given:    given{verb: "list", resource: "svc"},
-			expected: expected{resource: "services"},
+			action:   Action{verb: "get", resource: "pods", subResource: "log"},
+			mappingResult: &mappingResult{
+				argGVR:    schema.GroupVersionResource{Resource: "pods"},
+				returnGVR: podsGVR,
+			},
+			expected: expected{gr: podsGR},
 		},
 		{
 			scenario: "F",
-			given:    given{verb: "mow", resource: "services"},
-			expected: expected{err: errors.New("the \"services\" resource does not support the \"mow\" verb, only [list delete]")},
-		},
-		{
-			scenario: "G",
-			given:    given{verb: "get", resource: "pods", subResource: "log"},
-			expected: expected{resource: "pods/log"},
-		},
-		{
-			scenario: "H",
-			given:    given{verb: "get", resource: "pods", subResource: "logz"},
+			action:   Action{verb: "get", resource: "pods", subResource: "logz"},
+			mappingResult: &mappingResult{
+				argGVR:    schema.GroupVersionResource{Resource: "pods"},
+				returnGVR: podsGVR,
+			},
 			expected: expected{err: errors.New("the server doesn't have a resource type \"pods/logz\"")},
 		},
 		{
-			scenario:      "I",
-			given:         given{verb: "list", resource: "pod"},
-			mappingResult: &mappingResult{out: "pods"},
-			expected:      expected{resource: "pods"},
+			scenario: "G",
+			action:   Action{verb: "list", resource: "bees"},
+			mappingResult: &mappingResult{
+				argGVR:      schema.GroupVersionResource{Resource: "bees"},
+				returnError: errors.New("mapping failed"),
+			},
+			expected: expected{err: errors.New("the server doesn't have a resource type \"bees\"")},
 		},
 		{
-			scenario:      "J",
-			given:         given{verb: "get", resource: "pod", subResource: "log"},
-			mappingResult: &mappingResult{out: "pods"},
-			expected:      expected{resource: "pods/log"},
+			scenario: "H",
+			action:   Action{verb: rbac.VerbAll, resource: "pods"},
+			mappingResult: &mappingResult{
+				argGVR:    schema.GroupVersionResource{Resource: "pods"},
+				returnGVR: podsGVR,
+			},
+			expected: expected{gr: podsGR},
 		},
 		{
-			scenario:      "K",
-			given:         given{verb: "list", resource: "pod"},
-			mappingResult: &mappingResult{err: errors.New("mapping failed")},
-			expected:      expected{err: errors.New("the server doesn't have a resource type \"pod\"")},
-		},
-		{
-			scenario: "L",
-			given:    given{verb: "*", resource: "pods"},
-			expected: expected{resource: "pods"},
-		},
-		{
-			scenario: "M",
-			given:    given{verb: "list", resource: "*"},
-			expected: expected{resource: "*"},
+			scenario: "I",
+			action:   Action{verb: "list", resource: rbac.ResourceAll},
+			expected: expected{gr: schema.GroupResource{Resource: rbac.ResourceAll}},
 		},
 	}
 
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
 			mapper := new(mapperMock)
+
 			if tt.mappingResult != nil {
-				mapper.On("ResourceFor", schema.GroupVersionResource{Resource: tt.given.resource}).
-					Return(schema.GroupVersionResource{Resource: tt.mappingResult.out}, tt.mappingResult.err)
+				mapper.On("ResourceFor", tt.mappingResult.argGVR).
+					Return(tt.mappingResult.returnGVR, tt.mappingResult.returnError)
 			}
 
 			resolver := NewResourceResolver(client.Discovery(), mapper)
 
-			resource, err := resolver.Resolve(tt.given.verb, tt.given.resource, tt.given.subResource)
+			resource, err := resolver.Resolve(tt.action.verb, tt.action.resource, tt.action.subResource)
 
 			assert.Equal(t, tt.expected.err, err)
-			assert.Equal(t, tt.expected.resource, resource)
+			assert.Equal(t, tt.expected.gr, resource)
 
 			mapper.AssertExpectations(t)
 		})

@@ -9,6 +9,7 @@ import (
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	clioptions "k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes/fake"
 	clientTesting "k8s.io/client-go/testing"
@@ -40,9 +41,9 @@ type resourceResolverMock struct {
 	mock.Mock
 }
 
-func (r *resourceResolverMock) Resolve(verb, resource, subResource string) (string, error) {
+func (r *resourceResolverMock) Resolve(verb, resource, subResource string) (schema.GroupResource, error) {
 	args := r.Called(verb, resource, subResource)
-	return args.String(0), args.Error(1)
+	return args.Get(0).(schema.GroupResource), args.Error(1)
 }
 
 type clientConfigMock struct {
@@ -91,8 +92,8 @@ func TestComplete(t *testing.T) {
 		resource    string
 		subResource string
 
-		result string
-		err    error
+		gr  schema.GroupResource
+		err error
 	}
 
 	type expected struct {
@@ -106,20 +107,20 @@ func TestComplete(t *testing.T) {
 	data := []struct {
 		scenario string
 
-		*currentContext
+		currentContext *currentContext
 
-		flags flags
-		args  []string
-		*resolution
+		flags      flags
+		args       []string
+		resolution *resolution
 
-		expected
+		expected expected
 	}{
 		{
 			scenario:       "A",
 			currentContext: &currentContext{namespace: "foo"},
 			flags:          flags{namespace: "", allNamespaces: false},
 			args:           []string{"list", "pods"},
-			resolution:     &resolution{verb: "list", resource: "pods", result: "pods"},
+			resolution:     &resolution{verb: "list", resource: "pods", gr: schema.GroupResource{Resource: "pods"}},
 			expected: expected{
 				namespace:    "foo",
 				verb:         "list",
@@ -132,7 +133,7 @@ func TestComplete(t *testing.T) {
 			currentContext: &currentContext{err: errors.New("cannot open context")},
 			flags:          flags{namespace: "", allNamespaces: false},
 			args:           []string{"list", "pods"},
-			resolution:     &resolution{verb: "list", resource: "pods", result: "pods"},
+			resolution:     &resolution{verb: "list", resource: "pods", gr: schema.GroupResource{Resource: "pods"}},
 			expected: expected{
 				namespace:    "",
 				verb:         "list",
@@ -145,7 +146,7 @@ func TestComplete(t *testing.T) {
 			scenario:   "C",
 			flags:      flags{namespace: "", allNamespaces: true},
 			args:       []string{"get", "service/mongodb"},
-			resolution: &resolution{verb: "get", resource: "service", result: "services"},
+			resolution: &resolution{verb: "get", resource: "service", gr: schema.GroupResource{Resource: "services"}},
 			expected: expected{
 				namespace:    core.NamespaceAll,
 				verb:         "get",
@@ -157,7 +158,7 @@ func TestComplete(t *testing.T) {
 			scenario:   "D",
 			flags:      flags{namespace: "bar", allNamespaces: false},
 			args:       []string{"delete", "pv"},
-			resolution: &resolution{verb: "delete", resource: "pv", result: "persistentvolumes"},
+			resolution: &resolution{verb: "delete", resource: "pv", gr: schema.GroupResource{Resource: "persistentvolumes"}},
 			expected: expected{
 				namespace: "bar",
 				verb:      "delete",
@@ -211,7 +212,7 @@ func TestComplete(t *testing.T) {
 
 			if tt.resolution != nil {
 				resourceResolver.On("Resolve", tt.resolution.verb, tt.resolution.resource, tt.resolution.subResource).
-					Return(tt.resolution.result, tt.resolution.err)
+					Return(tt.resolution.gr, tt.resolution.err)
 			}
 			if tt.currentContext != nil {
 				clientConfig.On("Namespace").Return(tt.currentContext.namespace, false, tt.currentContext.err)
@@ -239,7 +240,7 @@ func TestComplete(t *testing.T) {
 			assert.Equal(t, tt.expected.err, err)
 			assert.Equal(t, tt.expected.namespace, o.namespace)
 			assert.Equal(t, tt.expected.verb, o.verb)
-			assert.Equal(t, tt.expected.resource, o.resource)
+			assert.Equal(t, tt.expected.resource, o.gr.Resource)
 			assert.Equal(t, tt.expected.resourceName, o.resourceName)
 
 			clientConfig.AssertExpectations(t)

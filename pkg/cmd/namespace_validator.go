@@ -8,6 +8,10 @@ import (
 	clientcore "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
+// NamespaceValidator wraps the Validate method.
+//
+// Validate checks whether the given namespace exists or not.
+// Returns nil if it exists, an error otherwise.
 type NamespaceValidator interface {
 	Validate(name string) error
 }
@@ -16,6 +20,7 @@ type namespaceValidator struct {
 	client clientcore.NamespaceInterface
 }
 
+// NewNamespaceValidator constructs the default NamespaceValidator.
 func NewNamespaceValidator(client clientcore.NamespaceInterface) NamespaceValidator {
 	return &namespaceValidator{
 		client: client,

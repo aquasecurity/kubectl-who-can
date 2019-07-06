@@ -75,10 +75,17 @@ func TestIntegration(t *testing.T) {
 			},
 		},
 		{
+			scenario: "Should print who can get pod named `pod-xyz` in the namespace `foo`",
+			args:     []string{"get", "pods/pod-xyz", "--namespace=foo"},
+			output: []string{
+				"batman-can-view-pod-xyz  foo        Batman   User",
+			},
+		},
+		{
 			scenario: "Should print who can list pods in group `metrics.k8s.io`",
 			args:     []string{"list", "pods.metrics.k8s.io"},
 			output: []string{
-				// TODO Add expectations
+				"spiderman-can-view-pod-metrics                        Spiderman                           User",
 			},
 		},
 	}
@@ -123,8 +130,13 @@ func createCRDs(t *testing.T, client clientext.CustomResourceDefinitionInterface
 		Spec: apiext.CustomResourceDefinitionSpec{
 			Scope: apiext.NamespaceScoped,
 			Group: "metrics.k8s.io",
-			// TODO Use Versions filed to be a good citizen
-			Version: "v1beta1",
+			Versions: []apiext.CustomResourceDefinitionVersion{
+				{
+					Name:    "v1beta1",
+					Served:  true,
+					Storage: true,
+				},
+			},
 			Names: apiext.CustomResourceDefinitionNames{
 				Kind:       "PodMetrics",
 				Singular:   "pod",
@@ -242,7 +254,7 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 		ObjectMeta: meta.ObjectMeta{Name: "scale-workloads"},
 		Rules: []rbac.PolicyRule{
 			{
-				APIGroups: []string{""},
+				APIGroups: []string{"extensions"},
 				Verbs:     []string{"update"},
 				Resources: []string{"deployments/scale"},
 			},
@@ -283,6 +295,18 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 	})
 	require.NoError(t, err)
 
+	_, err = clientRBAC.Roles(namespaceFoo).Create(&rbac.Role{
+		ObjectMeta: meta.ObjectMeta{Name: "view-pod-xyz"},
+		Rules: []rbac.PolicyRule{
+			{
+				APIGroups:     []string{""},
+				Verbs:         []string{"get"},
+				Resources:     []string{"pods"},
+				ResourceNames: []string{"pod-xyz"},
+			},
+		},
+	})
+
 	_, err = clientRBAC.RoleBindings(namespaceFoo).Create(&rbac.RoleBinding{
 		ObjectMeta: meta.ObjectMeta{Name: "operator-can-view-services"},
 		RoleRef: rbac.RoleRef{
@@ -291,6 +315,17 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 		},
 		Subjects: []rbac.Subject{
 			{Kind: rbac.ServiceAccountKind, Name: "operator", Namespace: "bar"},
+		},
+	})
+
+	_, err = clientRBAC.RoleBindings(namespaceFoo).Create(&rbac.RoleBinding{
+		ObjectMeta: meta.ObjectMeta{Name: "batman-can-view-pod-xyz"},
+		RoleRef: rbac.RoleRef{
+			Name: "view-pod-xyz",
+			Kind: cmd.RoleKind,
+		},
+		Subjects: []rbac.Subject{
+			{Kind: rbac.UserKind, Name: "Batman"},
 		},
 	})
 
