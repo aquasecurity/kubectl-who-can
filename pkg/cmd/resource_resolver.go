@@ -7,15 +7,15 @@ import (
 	apismeta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
+	"strings"
 )
 
 // ResourceResolver wraps the Resolve method.
 //
-// Resolve attempts to resolve an APIResource's Name by `resource` and `subResource`.
-// It then validates that the specified `verb` is supported.
-// The returned APIResource's Name may represent a resource (e.g. `pods`) or a sub-resource (e.g. `pods/log`).
+// Resolve attempts to resolve a GroupResource by `resource` and `subResource`.
+// It also validates that the specified `verb` is supported by the resolved resource.
 type ResourceResolver interface {
-	Resolve(verb, resource, subResource string) (string, error)
+	Resolve(verb, resource, subResource string) (schema.GroupResource, error)
 }
 
 type resourceResolver struct {
@@ -23,6 +23,7 @@ type resourceResolver struct {
 	mapper meta.RESTMapper
 }
 
+// NewResourceResolver constructs the default ResourceResolver.
 func NewResourceResolver(client discovery.DiscoveryInterface, mapper meta.RESTMapper) ResourceResolver {
 	return &resourceResolver{
 		client: client,
@@ -30,33 +31,62 @@ func NewResourceResolver(client discovery.DiscoveryInterface, mapper meta.RESTMa
 	}
 }
 
-func (rv *resourceResolver) Resolve(verb, resource, subResource string) (string, error) {
+func (rv *resourceResolver) Resolve(verb, resource, subResource string) (schema.GroupResource, error) {
 	if resource == rbac.ResourceAll {
-		return resource, nil
+		return schema.GroupResource{Resource: resource}, nil
 	}
-	apiResource, err := rv.resourceFor(resource, subResource)
+
+	name := resource
+	if subResource != "" {
+		name = name + "/" + subResource
+	}
+
+	gvr, err := rv.resolveGVR(resource)
 	if err != nil {
-		name := resource
-		if subResource != "" {
-			name = name + "/" + subResource
-		}
-		return "", fmt.Errorf("the server doesn't have a resource type \"%s\"", name)
+		return schema.GroupResource{}, fmt.Errorf("the server doesn't have a resource type \"%s\"", name)
+	}
+
+	apiResource, err := rv.resolveAPIResource(gvr, subResource)
+	if err != nil {
+		return schema.GroupResource{}, fmt.Errorf("the server doesn't have a resource type \"%s\"", name)
 	}
 
 	if !rv.isVerbSupportedBy(verb, apiResource) {
-		return "", fmt.Errorf("the \"%s\" resource does not support the \"%s\" verb, only %v", apiResource.Name, verb, apiResource.Verbs)
+		return schema.GroupResource{}, fmt.Errorf("the \"%s\" resource does not support the \"%s\" verb, only %v", apiResource.Name, verb, apiResource.Verbs)
 	}
 
-	return apiResource.Name, nil
+	return gvr.GroupResource(), nil
 }
 
-func (rv *resourceResolver) resourceFor(resourceArg, subResource string) (apismeta.APIResource, error) {
-	index, err := rv.indexResources()
+func (rv *resourceResolver) resolveGVR(resource string) (schema.GroupVersionResource, error) {
+	if resource == rbac.ResourceAll {
+		return schema.GroupVersionResource{Resource: resource}, nil
+	}
+
+	fullySpecifiedGVR, groupResource := schema.ParseResourceArg(strings.ToLower(resource))
+	gvr := schema.GroupVersionResource{}
+	if fullySpecifiedGVR != nil {
+		gvr, _ = rv.mapper.ResourceFor(*fullySpecifiedGVR)
+	}
+
+	if gvr.Empty() {
+		var err error
+		gvr, err = rv.mapper.ResourceFor(groupResource.WithVersion(""))
+		if err != nil {
+			return schema.GroupVersionResource{}, err
+		}
+	}
+
+	return gvr, nil
+}
+
+func (rv *resourceResolver) resolveAPIResource(gvr schema.GroupVersionResource, subResource string) (apismeta.APIResource, error) {
+	index, err := rv.indexResources(gvr)
 	if err != nil {
 		return apismeta.APIResource{}, err
 	}
 
-	apiResource, err := rv.lookupResource(index, resourceArg)
+	apiResource, err := rv.lookupResource(index, gvr.Resource)
 	if err != nil {
 		return apismeta.APIResource{}, err
 	}
@@ -66,25 +96,16 @@ func (rv *resourceResolver) resourceFor(resourceArg, subResource string) (apisme
 		if err != nil {
 			return apismeta.APIResource{}, err
 		}
-		return apiResource, nil
 	}
 	return apiResource, nil
 }
 
 func (rv *resourceResolver) lookupResource(index map[string]apismeta.APIResource, resourceArg string) (apismeta.APIResource, error) {
-	resource, ok := index[resourceArg]
+	apiResource, ok := index[resourceArg]
 	if ok {
-		return resource, nil
+		return apiResource, nil
 	}
 
-	gvr, err := rv.mapper.ResourceFor(schema.GroupVersionResource{Resource: resourceArg})
-	if err != nil {
-		return apismeta.APIResource{}, err
-	}
-	resource, ok = index[gvr.Resource]
-	if ok {
-		return resource, nil
-	}
 	return apismeta.APIResource{}, fmt.Errorf("not found \"%s\"", resourceArg)
 }
 
@@ -96,36 +117,21 @@ func (rv *resourceResolver) lookupSubResource(index map[string]apismeta.APIResou
 	return apiResource, nil
 }
 
-// indexResources builds a lookup index for APIResources where the keys are resources names (both plural and short names).
-func (rv *resourceResolver) indexResources() (map[string]apismeta.APIResource, error) {
-	serverResources := make(map[string]apismeta.APIResource)
+// indexResources builds a lookup index for APIResources where the keys are plural resources names.
+// NB A subresource is also represented by APIResource and the corresponding key is <resource>/<subresource>,
+// for example, `pods/log` or `deployments/scale`.
+func (rv *resourceResolver) indexResources(gvr schema.GroupVersionResource) (map[string]apismeta.APIResource, error) {
+	index := make(map[string]apismeta.APIResource)
 
-	serverGroups, err := rv.client.ServerGroups()
+	resourceList, err := rv.client.ServerResourcesForGroupVersion(gvr.GroupVersion().String())
 	if err != nil {
 		return nil, fmt.Errorf("getting API groups: %v", err)
 	}
-	for _, sg := range serverGroups.Groups {
-		for _, version := range sg.Versions {
-			// Consider only preferred versions
-			if version.GroupVersion != sg.PreferredVersion.GroupVersion {
-				continue
-			}
-			rsList, err := rv.client.ServerResourcesForGroupVersion(version.GroupVersion)
-			if err != nil {
-				return nil, fmt.Errorf("getting resources for API group: %v", err)
-			}
-
-			for _, res := range rsList.APIResources {
-				serverResources[res.Name] = res
-				if len(res.ShortNames) > 0 {
-					for _, sn := range res.ShortNames {
-						serverResources[sn] = res
-					}
-				}
-			}
-		}
+	for _, res := range resourceList.APIResources {
+		index[res.Name] = res
 	}
-	return serverResources, nil
+
+	return index, nil
 }
 
 // isVerbSupportedBy returns `true` if the given verb is supported by the given resource, `false` otherwise.

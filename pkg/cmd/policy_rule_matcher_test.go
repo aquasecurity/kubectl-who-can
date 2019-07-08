@@ -4,6 +4,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	rbac "k8s.io/api/rbac/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"testing"
 )
 
@@ -15,15 +16,23 @@ func TestMatcher_MatchesRole(t *testing.T) {
 		Rules: []rbac.PolicyRule{
 			{
 				Verbs:     []string{"get", "list"},
+				APIGroups: []string{""},
 				Resources: []string{"services"},
 			},
 			{
 				Verbs:     []string{"get", "list"},
-				Resources: []string{"endpoints"},
+				APIGroups: []string{"extensions"},
+				Resources: []string{"deployments"},
 			},
 		},
 	}
-	action := Action{verb: "list", resource: "endpoints"}
+	action := Action{
+		verb: "list",
+		gr: schema.GroupResource{
+			Group:    "extensions",
+			Resource: "deployments",
+		},
+	}
 
 	// then
 	assert.True(t, matcher.MatchesRole(role, action))
@@ -37,21 +46,32 @@ func TestMatcher_MatchesClusterRole(t *testing.T) {
 		Rules: []rbac.PolicyRule{
 			{
 				Verbs:     []string{"update", "patch", "delete"},
+				APIGroups: []string{""},
 				Resources: []string{"deployments"},
 			},
 			{
 				Verbs:     []string{"update"},
+				APIGroups: []string{"extensions"},
 				Resources: []string{"deployments/scale"},
 			},
 		},
 	}
-	action := Action{verb: "update", resource: "deployments/scale"}
+	action := Action{
+		verb:        "update",
+		subResource: "scale",
+		gr: schema.GroupResource{
+			Group:    "extensions",
+			Resource: "deployments",
+		},
+	}
 
 	// then
 	assert.True(t, matcher.MatchesClusterRole(role, action))
 }
 
 func TestMatcher_matches(t *testing.T) {
+	servicesGR := schema.GroupResource{Resource: "services"}
+
 	data := []struct {
 		scenario string
 
@@ -62,45 +82,67 @@ func TestMatcher_matches(t *testing.T) {
 	}{
 		{
 			scenario: "A",
-			action:   Action{verb: "get", resource: "services", resourceName: ""},
+			action: Action{
+				verb: "get",
+				gr:   servicesGR,
+			},
 			rule: rbac.PolicyRule{
 				Verbs:     []string{"get", "list"},
+				APIGroups: []string{""},
 				Resources: []string{"services"},
 			},
 			matches: true,
 		},
 		{
 			scenario: "B",
-			action:   Action{verb: "get", resource: "services", resourceName: ""},
+			action: Action{
+				verb: "get",
+				gr:   servicesGR,
+			},
 			rule: rbac.PolicyRule{
 				Verbs:     []string{"get", "list"},
+				APIGroups: []string{""},
 				Resources: []string{"*"},
 			},
 			matches: true,
 		},
 		{
 			scenario: "C",
-			action:   Action{verb: "get", resource: "services", resourceName: ""},
+			action: Action{
+				verb: "get",
+				gr:   servicesGR,
+			},
 			rule: rbac.PolicyRule{
-				Verbs:     []string{"*"},
+				Verbs:     []string{rbac.VerbAll},
+				APIGroups: []string{""},
 				Resources: []string{"services"},
 			},
 			matches: true,
 		},
 		{
 			scenario: "D",
-			action:   Action{verb: "get", resource: "services", resourceName: "mongodb"},
+			action: Action{
+				verb:         "get",
+				resourceName: "mongodb",
+				gr:           servicesGR,
+			},
 			rule: rbac.PolicyRule{
 				Verbs:     []string{"get", "list"},
+				APIGroups: []string{""},
 				Resources: []string{"services"},
 			},
 			matches: true,
 		},
 		{
 			scenario: "E",
-			action:   Action{verb: "get", resource: "services", resourceName: "mongodb"},
+			action: Action{
+				verb:         "get",
+				resourceName: "mongodb",
+				gr:           servicesGR,
+			},
 			rule: rbac.PolicyRule{
 				Verbs:         []string{"get", "list"},
+				APIGroups:     []string{""},
 				Resources:     []string{"services"},
 				ResourceNames: []string{"mongodb", "nginx"},
 			},
@@ -108,9 +150,14 @@ func TestMatcher_matches(t *testing.T) {
 		},
 		{
 			scenario: "F",
-			action:   Action{verb: "get", resource: "services", resourceName: "mongodb"},
+			action: Action{
+				verb:         "get",
+				resourceName: "mongodb",
+				gr:           servicesGR,
+			},
 			rule: rbac.PolicyRule{
 				Verbs:         []string{"get", "list"},
+				APIGroups:     []string{""},
 				Resources:     []string{"services"},
 				ResourceNames: []string{"nginx"},
 			},
@@ -118,9 +165,13 @@ func TestMatcher_matches(t *testing.T) {
 		},
 		{
 			scenario: "G",
-			action:   Action{verb: "get", resource: "services", resourceName: ""},
+			action: Action{
+				verb: "get",
+				gr:   servicesGR,
+			},
 			rule: rbac.PolicyRule{
 				Verbs:         []string{"get", "list"},
+				APIGroups:     []string{""},
 				Resources:     []string{"services"},
 				ResourceNames: []string{"nginx"},
 			},
@@ -128,18 +179,26 @@ func TestMatcher_matches(t *testing.T) {
 		},
 		{
 			scenario: "H",
-			action:   Action{verb: "get", resource: "pods", resourceName: ""},
+			action: Action{
+				verb: "get",
+				gr:   schema.GroupResource{Resource: "pods"},
+			},
 			rule: rbac.PolicyRule{
 				Verbs:     []string{"create"},
+				APIGroups: []string{""},
 				Resources: []string{"pods"},
 			},
 			matches: false,
 		},
 		{
 			scenario: "I",
-			action:   Action{verb: "get", resource: "persistentvolumes", resourceName: ""},
+			action: Action{
+				verb: "get",
+				gr:   schema.GroupResource{Resource: "persistentvolumes"},
+			},
 			rule: rbac.PolicyRule{
 				Verbs:     []string{"get"},
+				APIGroups: []string{""},
 				Resources: []string{"pods"},
 			},
 			matches: false,
@@ -168,6 +227,45 @@ func TestMatcher_matches(t *testing.T) {
 			rule: rbac.PolicyRule{
 				Verbs:           []string{"get"},
 				NonResourceURLs: []string{"/api"},
+			},
+			matches: false,
+		},
+		{
+			scenario: "Should return true when PolicyRule's APIGroup matches resolved resource's group",
+			action: Action{
+				verb: "get",
+				gr:   schema.GroupResource{Resource: "deployments", Group: "extensions"},
+			},
+			rule: rbac.PolicyRule{
+				Verbs:     []string{"get"},
+				APIGroups: []string{"extensions"},
+				Resources: []string{"deployments"},
+			},
+			matches: true,
+		},
+		{
+			scenario: "Should return true when PolicyRule's APIGroup matches all ('*') resource groups",
+			action: Action{
+				verb: "get",
+				gr:   schema.GroupResource{Resource: "pods", Group: "metrics.k8s.io"},
+			},
+			rule: rbac.PolicyRule{
+				Verbs:     []string{"get"},
+				APIGroups: []string{"*"},
+				Resources: []string{"pods"},
+			},
+			matches: true,
+		},
+		{
+			scenario: "Should return false when PolicyRule's APIGroup doesn't match resolved resource's Group",
+			action: Action{
+				verb: "get",
+				gr:   schema.GroupResource{Resource: "pods", Group: "metrics.k8s.io"},
+			},
+			rule: rbac.PolicyRule{
+				Verbs:     []string{"get"},
+				APIGroups: []string{""},
+				Resources: []string{"pods"},
 			},
 			matches: false,
 		},

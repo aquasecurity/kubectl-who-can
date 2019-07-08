@@ -6,9 +6,9 @@
 
 # kubectl-who-can
 
-Shows who has permissions to VERB [TYPE | TYPE/NAME | NONRESOURCEURL] in Kubernetes.
+Shows which subjects have RBAC permissions to VERB [TYPE | TYPE/NAME | NONRESOURCEURL] in Kubernetes.
 
-[![asciicast](https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j.svg)](https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j)
+[![asciicast][asciicast-img]][asciicast]
 
 ## Installation
 
@@ -31,7 +31,7 @@ Download a release distribution archive for your operating system, extract it, a
 executable to your `$PATH`. For example, to manually install `kubectl-who-can` on macOS run the following command:
 
 ```
-VERSION="v0.1.0-alpha.1"
+VERSION=`git describe --abbrev=0`
 
 mkdir -p /tmp/who-can/$VERSION && \
 curl -L https://github.com/aquasecurity/kubectl-who-can/releases/download/$VERSION/kubectl-who-can_darwin_x86_64.tar.gz \
@@ -83,3 +83,6 @@ The `kubectl-who-can` binary will be in `/usr/local/bin`.
 
 [license-img]: https://img.shields.io/github/license/aquasecurity/kubectl-who-can.svg
 [license]: https://github.com/aquasecurity/kubectl-who-can/blob/master/LICENSE
+
+[asciicast-img]: https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j.svg
+[asciicast]: https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j

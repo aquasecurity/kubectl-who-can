@@ -8,7 +8,8 @@ import (
 // PolicyRuleMatcher wraps the Matches* methods.
 //
 // MatchesRole returns `true` if any PolicyRule defined by the given Role matches the specified Action, `false` otherwise.
-// MatchesClusterRole returns `true` if any PolicyRule defined by the given ClusterRole matches the specified  Action, `false` otherwise.
+//
+// MatchesClusterRole returns `true` if any PolicyRule defined by the given ClusterRole matches the specified Action, `false` otherwise.
 type PolicyRuleMatcher interface {
 	MatchesRole(role rbac.Role, action Action) bool
 	MatchesClusterRole(role rbac.ClusterRole, action Action) bool
@@ -17,7 +18,7 @@ type PolicyRuleMatcher interface {
 type matcher struct {
 }
 
-// NewPolicyRuleMatcher constructs a PolicyRuleMatcher.
+// NewPolicyRuleMatcher constructs the default PolicyRuleMatcher.
 func NewPolicyRuleMatcher() PolicyRuleMatcher {
 	return &matcher{}
 }
@@ -54,9 +55,24 @@ func (m *matcher) matches(rule rbac.PolicyRule, action Action) bool {
 			m.matchesNonResourceURL(rule, action.nonResourceURL)
 	}
 
+	resource := action.gr.Resource
+	if action.subResource != "" {
+		resource += "/" + action.subResource
+	}
+
 	return m.matchesVerb(rule, action.verb) &&
-		m.matchesResource(rule, action.resource) &&
+		m.matchesResource(rule, resource) &&
+		m.matchesAPIGroup(rule, action.gr.Group) &&
 		m.matchesResourceName(rule, action.resourceName)
+}
+
+func (m *matcher) matchesAPIGroup(rule rbac.PolicyRule, actionGroup string) bool {
+	for _, group := range rule.APIGroups {
+		if group == rbac.APIGroupAll || group == actionGroup {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *matcher) matchesVerb(rule rbac.PolicyRule, actionVerb string) bool {
