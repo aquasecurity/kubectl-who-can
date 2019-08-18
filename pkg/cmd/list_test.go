@@ -219,19 +219,21 @@ func TestComplete(t *testing.T) {
 			}
 
 			// given
-			o := NewWhoCanOptions(configFlags,
-				clientConfig,
-				kubeClient.CoreV1().Namespaces(),
-				kubeClient.RbacV1(),
-				namespaceValidator,
-				resourceResolver,
-				accessChecker,
-				policyRuleMatcher,
-				clioptions.NewTestIOStreamsDiscard())
-
-			// and
-			o.namespace = tt.flags.namespace
-			o.allNamespaces = tt.flags.allNamespaces
+			o := whoCan{
+				Action: Action{
+					namespace:     tt.flags.namespace,
+					allNamespaces: tt.flags.allNamespaces,
+				},
+				configFlags:        configFlags,
+				clientConfig:       clientConfig,
+				clientNamespace:    kubeClient.CoreV1().Namespaces(),
+				clientRBAC:         kubeClient.RbacV1(),
+				namespaceValidator: namespaceValidator,
+				resourceResolver:   resourceResolver,
+				accessChecker:      accessChecker,
+				policyRuleMatcher:  policyRuleMatcher,
+				IOStreams:          clioptions.NewTestIOStreamsDiscard(),
+			}
 
 			// when
 			err := o.Complete(tt.args)
@@ -398,16 +400,20 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 
 			// given
 			configFlags := &clioptions.ConfigFlags{}
-			wc := NewWhoCanOptions(configFlags,
-				configFlags.ToRawKubeConfigLoader(),
-				client.CoreV1().Namespaces(),
-				client.RbacV1(),
-				namespaceValidator,
-				resourceResolver,
-				accessChecker,
-				policyRuleMatcher,
-				clioptions.NewTestIOStreamsDiscard())
-			wc.namespace = tt.namespace
+			wc := whoCan{
+				Action: Action{
+					namespace: tt.namespace,
+				},
+				configFlags:        configFlags,
+				clientConfig:       configFlags.ToRawKubeConfigLoader(),
+				clientNamespace:    client.CoreV1().Namespaces(),
+				clientRBAC:         client.RbacV1(),
+				namespaceValidator: namespaceValidator,
+				resourceResolver:   resourceResolver,
+				accessChecker:      accessChecker,
+				policyRuleMatcher:  policyRuleMatcher,
+				IOStreams:          clioptions.NewTestIOStreamsDiscard(),
+			}
 
 			// when
 			warnings, err := wc.checkAPIAccess()
