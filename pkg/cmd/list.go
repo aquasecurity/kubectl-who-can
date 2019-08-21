@@ -68,7 +68,7 @@ type Action struct {
 	nonResourceURL string
 	subResource    string
 	resourceName   string
-	gr            schema.GroupResource
+	gr             schema.GroupResource
 
 	namespace     string
 	allNamespaces bool
@@ -96,60 +96,9 @@ type whoCan struct {
 	clioptions.IOStreams
 }
 
-func NewWhoCanOptions(configFlags *clioptions.ConfigFlags,
-	clientConfig clientcmd.ClientConfig,
-	clientNamespace clientcore.NamespaceInterface,
-	clientRBAC clientrbac.RbacV1Interface,
-	namespaceValidator NamespaceValidator,
-	resourceResolver ResourceResolver,
-	accessChecker AccessChecker,
-	policyRuleMatcher PolicyRuleMatcher,
-	streams clioptions.IOStreams) *whoCan {
-	return &whoCan{
-		configFlags:        configFlags,
-		clientConfig:       clientConfig,
-		clientNamespace:    clientNamespace,
-		clientRBAC:         clientRBAC,
-		namespaceValidator: namespaceValidator,
-		resourceResolver:   resourceResolver,
-		accessChecker:      accessChecker,
-		policyRuleMatcher:  policyRuleMatcher,
-		IOStreams:          streams,
-	}
-}
-
 func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
-	configFlags := clioptions.NewConfigFlags(true)
-
-	clientConfig, err := configFlags.ToRESTConfig()
-	if err != nil {
-		return nil, fmt.Errorf("getting config: %v", err)
-	}
-
-	client, err := kubernetes.NewForConfig(clientConfig)
-	if err != nil {
-		return nil, fmt.Errorf("creating client: %v", err)
-	}
-
-	mapper, err := configFlags.ToRESTMapper()
-	if err != nil {
-		return nil, fmt.Errorf("getting mapper: %v", err)
-	}
-
-	clientNamespace := client.CoreV1().Namespaces()
-	accessChecker := NewAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews())
-	namespaceValidator := NewNamespaceValidator(clientNamespace)
-	resourceResolver := NewResourceResolver(client.Discovery(), mapper)
-
-	o := NewWhoCanOptions(configFlags,
-		configFlags.ToRawKubeConfigLoader(),
-		clientNamespace,
-		client.RbacV1(),
-		namespaceValidator,
-		resourceResolver,
-		accessChecker,
-		NewPolicyRuleMatcher(),
-		streams)
+	var configFlags *clioptions.ConfigFlags
+	var o whoCan
 
 	cmd := &cobra.Command{
 		Use:          whoCanUsage,
@@ -157,6 +106,34 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 		Example:      whoCanExample,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			clientConfig, err := configFlags.ToRESTConfig()
+			if err != nil {
+				return fmt.Errorf("getting config: %v", err)
+			}
+
+			client, err := kubernetes.NewForConfig(clientConfig)
+			if err != nil {
+				return fmt.Errorf("creating client: %v", err)
+			}
+
+			mapper, err := configFlags.ToRESTMapper()
+			if err != nil {
+				return fmt.Errorf("getting mapper: %v", err)
+			}
+
+			clientNamespace := client.CoreV1().Namespaces()
+			namespaceValidator := NewNamespaceValidator(clientNamespace)
+
+			o.configFlags = configFlags
+			o.clientConfig = configFlags.ToRawKubeConfigLoader()
+			o.clientNamespace = clientNamespace
+			o.clientRBAC = client.RbacV1()
+			o.namespaceValidator = namespaceValidator
+			o.resourceResolver = NewResourceResolver(client.Discovery(), mapper)
+			o.accessChecker = NewAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews())
+			o.policyRuleMatcher = NewPolicyRuleMatcher()
+			o.IOStreams = streams
+
 			if err := o.Complete(args); err != nil {
 				return err
 			}
@@ -171,14 +148,15 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 		},
 	}
 
-	cmd.PersistentFlags().StringVar(&o.subResource, "subresource", o.subResource,
+	cmd.Flags().StringVar(&o.subResource, "subresource", o.subResource,
 		"SubResource such as pod/log or deployment/scale")
-	cmd.PersistentFlags().BoolVarP(&o.allNamespaces, "all-namespaces", "A", false,
+	cmd.Flags().BoolVarP(&o.allNamespaces, "all-namespaces", "A", o.allNamespaces,
 		"If true, check the specified action in all namespaces.")
 
-	flag.CommandLine.VisitAll(func(goflag *flag.Flag) {
-		cmd.PersistentFlags().AddGoFlag(goflag)
+	flag.CommandLine.VisitAll(func(gf *flag.Flag) {
+		cmd.Flags().AddGoFlag(gf)
 	})
+	configFlags = clioptions.NewConfigFlags(true)
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd, nil

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/golang/glog"
 	rbac "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	apismeta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,11 +44,13 @@ func (rv *resourceResolver) Resolve(verb, resource, subResource string) (schema.
 
 	gvr, err := rv.resolveGVR(resource)
 	if err != nil {
+		glog.V(3).Infof("Error while resolving GVR for resource %s: %v", resource, err)
 		return schema.GroupResource{}, fmt.Errorf("the server doesn't have a resource type \"%s\"", name)
 	}
 
 	apiResource, err := rv.resolveAPIResource(gvr, subResource)
 	if err != nil {
+		glog.V(3).Infof("Error while resolving APIResource for GVR %v and subResource %s: %v", gvr, subResource, err)
 		return schema.GroupResource{}, fmt.Errorf("the server doesn't have a resource type \"%s\"", name)
 	}
 
