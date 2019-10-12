@@ -69,6 +69,10 @@ docker run --rm -v /usr/local/bin:/go/bin golang go get -v github.com/aquasecuri
 ```
 The `kubectl-who-can` binary will be in `/usr/local/bin`.
 
+## License
+
+This repository is available under the [Apache License 2.0](https://github.com/aquasecurity/kubectl-who-can/blob/master/LICENSE).
+
 [release-img]: https://img.shields.io/github/release/aquasecurity/kubectl-who-can.svg
 [release]: https://github.com/aquasecurity/kubectl-who-can/releases
 
