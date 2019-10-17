@@ -21,14 +21,14 @@ import (
 )
 
 const (
-	whoCanUsage = `kubectl who-can VERB [TYPE | TYPE/NAME | NONRESOURCEURL]`
+	whoCanUsage = `kubectl who-can VERB (TYPE | TYPE/NAME | NONRESOURCEURL)`
 	whoCanLong  = `Shows which users, groups and service accounts can perform a given verb on a given resource type.
 
 VERB is a logical Kubernetes API verb like 'get', 'list', 'watch', 'delete', etc.
 TYPE is a Kubernetes resource. Shortcuts and API groups will be resolved, e.g. 'po' or 'pods.metrics.k8s.io'.
 NAME is the name of a particular Kubernetes resource.
 NONRESOURCEURL is a partial URL that starts with "/".`
-	whoCanExample = `  # List who can get pods in any namespace
+	whoCanExample = `  # List who can get pods from any of the available namespaces
   kubectl who-can get pods --all-namespaces
 
   # List who can create pods in the current namespace
@@ -151,7 +151,7 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 	cmd.Flags().StringVar(&o.subResource, "subresource", o.subResource,
 		"SubResource such as pod/log or deployment/scale")
 	cmd.Flags().BoolVarP(&o.allNamespaces, "all-namespaces", "A", o.allNamespaces,
-		"If true, check the specified action in all namespaces.")
+		"If true, check for users that can do the specified action in any of the available namespaces")
 
 	flag.CommandLine.VisitAll(func(gf *flag.Flag) {
 		cmd.Flags().AddGoFlag(gf)
