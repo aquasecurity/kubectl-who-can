@@ -9,3 +9,7 @@ coverage.txt
 
 # Kubernetes integration test binary
 test/bin/integration_test
+
+# Directory Cache Files
+.DS_Store
+thumbs.db
