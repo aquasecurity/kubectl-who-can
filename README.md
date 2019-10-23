@@ -69,6 +69,18 @@ docker run --rm -v /usr/local/bin:/go/bin golang go get -v github.com/aquasecuri
 ```
 The `kubectl-who-can` binary will be in `/usr/local/bin`.
 
+## Usage
+
+`$ kubectl kubectl who-can VERB (TYPE | TYPE/NAME | NONRESOURCEURL) [flags]`
+
+### Flags
+
+Name             | Shorthand | Default | Usage
+-----------------|-----------|---------|----------------------------
+namespace        | n         |         | If present, the namespace scope for this CLI request
+all-namespaces   | A         | false   | If true, check for users that can do the specified action in any of the available namespaces
+subresource      |           |         | Specify a sub-resource such as pod/log or deployment/scale
+
 ## License
 
 This repository is available under the [Apache License 2.0](https://github.com/aquasecurity/kubectl-who-can/blob/master/LICENSE).
