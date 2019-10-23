@@ -4,16 +4,19 @@
 [![Go Report Card][report-card-img]][report-card]
 [![License][license-img]][license]
 
+
 # kubectl-who-can
 
 Shows which subjects have RBAC permissions to VERB [TYPE | TYPE/NAME | NONRESOURCEURL] in Kubernetes.
 
 [![asciicast][asciicast-img]][asciicast]
 
+
 ## Installation
 
 There are several ways to install `kubectl-who-can`. The recommended installation is via the `kubectl` plugin manager
 called [`krew`](https://github.com/kubernetes-sigs/krew).
+
 
 ### krew
 
@@ -24,6 +27,7 @@ kubectl krew install who-can
 ```
 
 The plugin will be available as `kubectl who-can`.
+
 
 ### Manual
 
@@ -38,6 +42,7 @@ curl -L https://github.com/aquasecurity/kubectl-who-can/releases/download/$VERSI
   | tar xz -C /tmp/who-can/$VERSION && \
 sudo mv -i /tmp/who-can/$VERSION/kubectl-who-can /usr/local/bin
 ```
+
 
 ## Build from Source
 
@@ -69,9 +74,11 @@ docker run --rm -v /usr/local/bin:/go/bin golang go get -v github.com/aquasecuri
 ```
 The `kubectl-who-can` binary will be in `/usr/local/bin`.
 
+
 ## Usage
 
 `$ kubectl kubectl who-can VERB (TYPE | TYPE/NAME | NONRESOURCEURL) [flags]`
+
 
 ### Flags
 
@@ -80,6 +87,7 @@ Name             | Shorthand | Default | Usage
 namespace        | n         |         | If present, the namespace scope for this CLI request
 all-namespaces   | A         | false   | If true, check for users that can do the specified action in any of the available namespaces
 subresource      |           |         | Specify a sub-resource such as pod/log or deployment/scale
+
 
 ## License
 
