@@ -45,7 +45,7 @@ This is a standard Go program. If you already know how to build
 and install Go code, you probably won't need these instructions.
 
 Note that while the code is small, it has some rather big
-dependencies, and fetching + building these dependencies can
+dependencies and fetching + building these dependencies can
 take a few minutes.
 
 Option 1 (if you have a Go compiler and want to tweak the code):
