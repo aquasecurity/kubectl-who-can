@@ -17,7 +17,7 @@ called [`krew`](https://github.com/kubernetes-sigs/krew).
 
 ### krew
 
-I assume that you've already installed `krew`. Then run the following command:
+I assume that you've already [installed](https://github.com/kubernetes-sigs/krew#installation) `krew`. Then run the following command:
 
 ```
 kubectl krew install who-can
@@ -27,7 +27,7 @@ The plugin will be available as `kubectl who-can`.
 
 ### Manual
 
-Download a release distribution archive for your operating system, extract it, and add the `kubectl-who-can`
+Download a [release distribution archive](https://github.com/aquasecurity/kubectl-who-can/releases) for your operating system, extract it, and add the `kubectl-who-can`
 executable to your `$PATH`. For example, to manually install `kubectl-who-can` on macOS run the following command:
 
 ```
@@ -68,6 +68,20 @@ Option 3 (if you don't have a Go compiler, but have Docker installed):
 docker run --rm -v /usr/local/bin:/go/bin golang go get -v github.com/aquasecurity/kubectl-who-can/cmd/kubectl-who-can
 ```
 The `kubectl-who-can` binary will be in `/usr/local/bin`.
+
+## Usage
+
+`$ kubectl who-can VERB (TYPE | TYPE/NAME | NONRESOURCEURL) [flags]`
+
+### Flags
+
+Name             | Shorthand | Default | Usage
+-----------------|-----------|---------|----------------------------
+namespace        | n         |         | If present, the namespace scope for this CLI request
+all-namespaces   | A         | false   | If true, check for users that can do the specified action in any of the available namespaces
+subresource      |           |         | Specify a sub-resource such as pod/log or deployment/scale
+
+For additional details on flags and usage, run `kubectl who-can --help`.
 
 ## License
 
