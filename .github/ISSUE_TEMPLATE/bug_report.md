@@ -1,17 +1,17 @@
 ---
-name: Bug report
-about: I would like to report a bug within the project
-labels: bug
+Name: Bug Report
+About: I found a bug in the project !
+labels: Bug
 ---
 
-### What happened
+### What happened?
 
-<!---
-  Please explain in detail steps you took and what happened.
--->
+
+  Please explain in detail the issue you are facing.
+
 
 ### Expected behavior
 
-<!---
-  What should happen, ideally?
--->
+
+  What should happen ideally and what is happening really?
+
