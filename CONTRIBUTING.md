@@ -17,3 +17,4 @@ Thank you for taking interest in contributing to kubectl-who-can !
 1. If a reviewer commented on your code, or asked for changes, please remember to mark the discussion as resolved after you address it. PRs with unresolved issues should not be merged (even if the comment is unclear or requires no action from your side).
 1. Please include a comment with the results before and after your change.
 1. Please include proper tests with your code
+1. Happy Coding !!
