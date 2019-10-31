@@ -1,5 +1,6 @@
 Thank you for taking interest in contributing to kubectl-who-can !
-
+## Contributers
+Vansh Devgan
 ## Issues
 
 - Feel free to open issues for any reason as long as you make it clear if this issue is about a bug/feature/question/comment.
