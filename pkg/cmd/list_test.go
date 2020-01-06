@@ -219,7 +219,7 @@ func TestComplete(t *testing.T) {
 			}
 
 			// given
-			o := whoCan{
+			o := WhoCan{
 				Action: Action{
 					namespace:     tt.flags.namespace,
 					allNamespaces: tt.flags.allNamespaces,
@@ -297,7 +297,7 @@ func TestValidate(t *testing.T) {
 					Return(tt.namespaceValidation.returnedError)
 			}
 
-			o := &whoCan{
+			o := &WhoCan{
 				Action: Action{
 					nonResourceURL: tt.nonResourceURL,
 					subResource:    tt.subResource,
@@ -400,7 +400,7 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 
 			// given
 			configFlags := &clioptions.ConfigFlags{}
-			wc := whoCan{
+			wc := WhoCan{
 				Action: Action{
 					namespace: tt.namespace,
 				},
@@ -455,7 +455,7 @@ func TestWhoCan_printAPIAccessWarnings(t *testing.T) {
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
 			var buf bytes.Buffer
-			wc := whoCan{}
+			wc := WhoCan{}
 			wc.Out = &buf
 			wc.printAPIAccessWarnings(tt.warnings)
 			assert.Equal(t, tt.expectedOutput, buf.String())
@@ -508,7 +508,7 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	policyRuleMatcher.On("MatchesRole", viewServicesRole, action).Return(true)
 	policyRuleMatcher.On("MatchesRole", viewPodsRole, action).Return(false)
 
-	wc := whoCan{
+	wc := WhoCan{
 		clientRBAC:        client.RbacV1(),
 		policyRuleMatcher: policyRuleMatcher,
 	}
@@ -567,7 +567,7 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	policyRuleMatcher.On("MatchesClusterRole", getLogsRole, action).Return(false)
 	policyRuleMatcher.On("MatchesClusterRole", getApiRole, action).Return(true)
 
-	wc := whoCan{
+	wc := WhoCan{
 		clientRBAC:        client.RbacV1(),
 		policyRuleMatcher: policyRuleMatcher,
 	}
@@ -620,7 +620,7 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 		return true, list, nil
 	})
 
-	wc := whoCan{
+	wc := WhoCan{
 		clientRBAC: client.RbacV1(),
 		Action:     Action{namespace: namespace},
 	}
@@ -671,7 +671,7 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 		return true, list, nil
 	})
 
-	wc := whoCan{
+	wc := WhoCan{
 		clientRBAC: client.RbacV1(),
 	}
 
@@ -758,7 +758,7 @@ Bob-and-Eve-can-view-pods  Eve      User
 		t.Run(tt.scenario, func(t *testing.T) {
 			// given
 			streams, _, out, _ := clioptions.NewTestIOStreams()
-			wc := whoCan{
+			wc := WhoCan{
 				Action: Action{
 					verb:           tt.verb,
 					resource:       tt.resource,
