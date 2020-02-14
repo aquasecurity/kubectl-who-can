@@ -33,6 +33,9 @@ func NewResourceResolver(client discovery.DiscoveryInterface, mapper meta.RESTMa
 }
 
 func (rv *resourceResolver) Resolve(verb, resource, subResource string) (schema.GroupResource, error) {
+	if resource == "" {
+		return schema.GroupResource{}, nil
+	}
 	if resource == rbac.ResourceAll {
 		return schema.GroupResource{Resource: resource}, nil
 	}
