@@ -60,6 +60,10 @@ NONRESOURCEURL is a partial URL that starts with "/".`
 	RoleKind = "Role"
 	// ClusterRoleKind is the RoleRef's Kind referencing a ClusterRole.
 	ClusterRoleKind = "ClusterRole"
+
+	subResourceFlag   = "subresource"
+	allNamespacesFlag = "all-namespaces"
+	namespaceFlag     = "namespace"
 )
 
 // Action represents an action a subject can be given permission to.
@@ -85,8 +89,6 @@ type whoCan struct {
 	// Deprecated
 	Action
 
-	// Deprecated
-	configFlags     *clioptions.ConfigFlags
 	clientConfig    clientcmd.ClientConfig
 	clientNamespace clientcore.NamespaceInterface
 	clientRBAC      clientrbac.RbacV1Interface
@@ -99,7 +101,6 @@ type whoCan struct {
 
 func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 	var configFlags *clioptions.ConfigFlags
-	var o whoCan
 
 	cmd := &cobra.Command{
 		Use:          whoCanUsage,
@@ -125,7 +126,8 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 			clientNamespace := client.CoreV1().Namespaces()
 			namespaceValidator := NewNamespaceValidator(clientNamespace)
 
-			o.configFlags = configFlags
+			o := whoCan{}
+
 			o.clientConfig = configFlags.ToRawKubeConfigLoader()
 			o.clientNamespace = clientNamespace
 			o.clientRBAC = client.RbacV1()
@@ -134,7 +136,7 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 			o.accessChecker = NewAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews())
 			o.policyRuleMatcher = NewPolicyRuleMatcher()
 
-			if err := o.Complete(args); err != nil {
+			if err := o.Complete(cmd, args); err != nil {
 				return err
 			}
 
@@ -155,10 +157,8 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 		},
 	}
 
-	cmd.Flags().StringVar(&o.subResource, "subresource", o.subResource,
-		"SubResource such as pod/log or deployment/scale")
-	cmd.Flags().BoolVarP(&o.allNamespaces, "all-namespaces", "A", o.allNamespaces,
-		"If true, check for users that can do the specified action in any of the available namespaces")
+	cmd.Flags().String(subResourceFlag, "", "SubResource such as pod/log or deployment/scale")
+	cmd.Flags().BoolP(allNamespacesFlag, "A", false, "If true, check for users that can do the specified action in any of the available namespaces")
 
 	flag.CommandLine.VisitAll(func(gf *flag.Flag) {
 		cmd.Flags().AddGoFlag(gf)
@@ -170,8 +170,8 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 }
 
 // Complete sets all information required to check who can perform the specified action.
-func (w *whoCan) Complete(args []string) error {
-	err := w.resolveArgs(args)
+func (w *whoCan) Complete(cmd *cobra.Command, args []string) error {
+	err := w.resolveArgs(cmd, args)
 	if err != nil {
 		return err
 	}
@@ -184,15 +184,10 @@ func (w *whoCan) Complete(args []string) error {
 		glog.V(3).Infof("Resolved resource `%s`", w.resource)
 	}
 
-	err = w.resolveNamespace()
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
-func (w *whoCan) resolveArgs(args []string) error {
+func (w *whoCan) resolveArgs(cmd *cobra.Command, args []string) (err error) {
 	if len(args) < 2 {
 		return errors.New("you must specify two or three arguments: verb, resource, and optional resourceName")
 	}
@@ -209,18 +204,24 @@ func (w *whoCan) resolveArgs(args []string) error {
 			glog.V(3).Infof("Resolved resourceName `%s`", w.resourceName)
 		}
 	}
-	return nil
-}
 
-func (w *whoCan) resolveNamespace() (err error) {
+	w.subResource, err = cmd.Flags().GetString(subResourceFlag)
+	if err != nil {
+		return err
+	}
+
 	if w.allNamespaces {
 		w.namespace = core.NamespaceAll
 		glog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", w.namespace)
 		return nil
 	}
 
-	if w.configFlags.Namespace != nil && *w.configFlags.Namespace != "" {
-		w.namespace = *w.configFlags.Namespace
+	w.namespace, err = cmd.Flags().GetString(namespaceFlag)
+	if err != nil {
+		return err
+	}
+
+	if w.namespace != "" {
 		glog.V(3).Infof("Resolved namespace `%s` from --namespace flag", w.namespace)
 		return nil
 	}
