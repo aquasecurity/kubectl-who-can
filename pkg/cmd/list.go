@@ -8,8 +8,9 @@ import (
 	"github.com/spf13/pflag"
 	"io"
 	core "k8s.io/api/core/v1"
+	meta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	clioptions "k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
 	clientcore "k8s.io/client-go/kubernetes/typed/core/v1"
 	clientrbac "k8s.io/client-go/kubernetes/typed/rbac/v1"
@@ -19,7 +20,7 @@ import (
 
 	"github.com/golang/glog"
 	rbac "k8s.io/api/rbac/v1"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -87,18 +88,41 @@ type roles map[string]struct{}
 type clusterRoles map[string]struct{}
 
 type whoCan struct {
-	clientConfig    clientcmd.ClientConfig
 	clientNamespace clientcore.NamespaceInterface
 	clientRBAC      clientrbac.RbacV1Interface
 
 	namespaceValidator NamespaceValidator
-	resourceResolver   ResourceResolver
 	accessChecker      AccessChecker
 	policyRuleMatcher  PolicyRuleMatcher
+
+	resourceResolver ResourceResolver
 }
 
-func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
-	var configFlags *clioptions.ConfigFlags
+func NewWhoCan(clientConfig clientcmd.ClientConfig, mapper meta.RESTMapper) (*whoCan, error) {
+	config, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	clientNamespace := client.CoreV1().Namespaces()
+
+	return &whoCan{
+		clientNamespace:    clientNamespace,
+		clientRBAC:         client.RbacV1(),
+		namespaceValidator: NewNamespaceValidator(clientNamespace),
+		accessChecker:      NewAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews()),
+		policyRuleMatcher:  NewPolicyRuleMatcher(),
+		resourceResolver:   NewResourceResolver(client.Discovery(), mapper),
+	}, nil
+}
+
+func NewWhoCanCommand(streams genericclioptions.IOStreams) (*cobra.Command, error) {
+	var configFlags *genericclioptions.ConfigFlags
 
 	cmd := &cobra.Command{
 		Use:          whoCanUsage,
@@ -106,35 +130,19 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 		Example:      whoCanExample,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			clientConfig, err := configFlags.ToRESTConfig()
-			if err != nil {
-				return fmt.Errorf("getting config: %v", err)
-			}
-
-			client, err := kubernetes.NewForConfig(clientConfig)
-			if err != nil {
-				return fmt.Errorf("creating client: %v", err)
-			}
+			clientConfig := configFlags.ToRawKubeConfigLoader()
 
 			mapper, err := configFlags.ToRESTMapper()
 			if err != nil {
 				return fmt.Errorf("getting mapper: %v", err)
 			}
 
-			clientNamespace := client.CoreV1().Namespaces()
-			namespaceValidator := NewNamespaceValidator(clientNamespace)
+			o, err := NewWhoCan(clientConfig, mapper)
+			if err != nil {
+				return err
+			}
 
-			o := whoCan{}
-
-			o.clientConfig = configFlags.ToRawKubeConfigLoader()
-			o.clientNamespace = clientNamespace
-			o.clientRBAC = client.RbacV1()
-			o.namespaceValidator = namespaceValidator
-			o.resourceResolver = NewResourceResolver(client.Discovery(), mapper)
-			o.accessChecker = NewAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews())
-			o.policyRuleMatcher = NewPolicyRuleMatcher()
-
-			action, err := ResolveAction(o.clientConfig, cmd.Flags(), args)
+			action, err := ResolveAction(clientConfig, cmd.Flags(), args)
 			if err != nil {
 				return err
 			}
@@ -162,7 +170,7 @@ func NewCmdWhoCan(streams clioptions.IOStreams) (*cobra.Command, error) {
 	flag.CommandLine.VisitAll(func(gf *flag.Flag) {
 		cmd.Flags().AddGoFlag(gf)
 	})
-	configFlags = clioptions.NewConfigFlags(true)
+	configFlags = genericclioptions.NewConfigFlags(true)
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd, nil
@@ -292,7 +300,7 @@ func (w *whoCan) CheckAPIAccess(action Action) ([]string, error) {
 	if action.namespace == "" {
 		checks = append(checks, check{"list", "namespaces", ""})
 
-		nsList, err := w.clientNamespace.List(meta.ListOptions{})
+		nsList, err := w.clientNamespace.List(metav1.ListOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("listing namespaces: %v", err)
 		}
@@ -329,7 +337,7 @@ func (w *whoCan) CheckAPIAccess(action Action) ([]string, error) {
 
 // GetRolesFor returns a set of names of Roles matching the specified Action.
 func (w *whoCan) GetRolesFor(action Action, gr schema.GroupResource) (roles, error) {
-	rl, err := w.clientRBAC.Roles(action.namespace).List(meta.ListOptions{})
+	rl, err := w.clientRBAC.Roles(action.namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +357,7 @@ func (w *whoCan) GetRolesFor(action Action, gr schema.GroupResource) (roles, err
 
 // GetClusterRolesFor returns a set of names of ClusterRoles matching the specified Action.
 func (w *whoCan) GetClusterRolesFor(action Action, gr schema.GroupResource) (clusterRoles, error) {
-	crl, err := w.clientRBAC.ClusterRoles().List(meta.ListOptions{})
+	crl, err := w.clientRBAC.ClusterRoles().List(metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +381,7 @@ func (w *whoCan) GetRoleBindings(action Action, roleNames roles, clusterRoleName
 		return
 	}
 
-	list, err := w.clientRBAC.RoleBindings(action.namespace).List(meta.ListOptions{})
+	list, err := w.clientRBAC.RoleBindings(action.namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return
 	}
@@ -395,7 +403,7 @@ func (w *whoCan) GetRoleBindings(action Action, roleNames roles, clusterRoleName
 
 // GetClusterRoleBindings returns the ClusterRoleBindings that refer to the given sef of ClusterRole names.
 func (w *whoCan) GetClusterRoleBindings(clusterRoleNames clusterRoles) (clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
-	list, err := w.clientRBAC.ClusterRoleBindings().List(meta.ListOptions{})
+	list, err := w.clientRBAC.ClusterRoleBindings().List(metav1.ListOptions{})
 	if err != nil {
 		return
 	}
