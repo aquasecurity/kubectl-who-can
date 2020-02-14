@@ -232,7 +232,6 @@ func TestComplete(t *testing.T) {
 				resourceResolver:   resourceResolver,
 				accessChecker:      accessChecker,
 				policyRuleMatcher:  policyRuleMatcher,
-				IOStreams:          clioptions.NewTestIOStreamsDiscard(),
 			}
 
 			// when
@@ -297,17 +296,18 @@ func TestValidate(t *testing.T) {
 					Return(tt.namespaceValidation.returnedError)
 			}
 
+			action := Action{
+				nonResourceURL: tt.nonResourceURL,
+				subResource:    tt.subResource,
+				namespace:      tt.namespace,
+			}
+
 			o := &whoCan{
-				Action: Action{
-					nonResourceURL: tt.nonResourceURL,
-					subResource:    tt.subResource,
-					namespace:      tt.namespace,
-				},
 				namespaceValidator: namespaceValidator,
 			}
 
 			// when
-			err := o.Validate()
+			err := o.validate(action)
 
 			// then
 			assert.Equal(t, tt.expectedErr, err)
@@ -316,7 +316,7 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-func TestWhoCan_checkAPIAccess(t *testing.T) {
+func TestWhoCan_CheckAPIAccess(t *testing.T) {
 	const (
 		FooNs = "foo"
 		BarNs = "bar"
@@ -412,11 +412,10 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 				resourceResolver:   resourceResolver,
 				accessChecker:      accessChecker,
 				policyRuleMatcher:  policyRuleMatcher,
-				IOStreams:          clioptions.NewTestIOStreamsDiscard(),
 			}
 
 			// when
-			warnings, err := wc.checkAPIAccess()
+			warnings, err := wc.CheckAPIAccess()
 
 			// then
 			assert.Equal(t, tt.expectedError, err)
@@ -428,8 +427,7 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 
 }
 
-func TestWhoCan_printAPIAccessWarnings(t *testing.T) {
-
+func TestPrintWarnings(t *testing.T) {
 	data := []struct {
 		scenario       string
 		warnings       []string
@@ -455,9 +453,7 @@ func TestWhoCan_printAPIAccessWarnings(t *testing.T) {
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
 			var buf bytes.Buffer
-			wc := whoCan{}
-			wc.Out = &buf
-			wc.printAPIAccessWarnings(tt.warnings)
+			PrintWarnings(&buf, tt.warnings)
 			assert.Equal(t, tt.expectedOutput, buf.String())
 		})
 	}
@@ -684,7 +680,7 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	assert.Contains(t, bindings, getHealthzBnd)
 }
 
-func TestWhoCan_output(t *testing.T) {
+func TestPrintChecks(t *testing.T) {
 	data := []struct {
 		scenario string
 
@@ -757,22 +753,20 @@ Bob-and-Eve-can-view-pods  Eve      User
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
 			// given
-			streams, _, out, _ := clioptions.NewTestIOStreams()
-			wc := whoCan{
-				Action: Action{
-					verb:           tt.verb,
-					resource:       tt.resource,
-					nonResourceURL: tt.nonResourceURL,
-					resourceName:   tt.resourceName,
-				},
-				IOStreams: streams,
+			var buf bytes.Buffer
+
+			action := Action{
+				verb:           tt.verb,
+				resource:       tt.resource,
+				nonResourceURL: tt.nonResourceURL,
+				resourceName:   tt.resourceName,
 			}
 
 			// when
-			wc.output(tt.roleBindings, tt.clusterRoleBindings)
+			PrintChecks(&buf, action, tt.roleBindings, tt.clusterRoleBindings)
 
 			// then
-			assert.Equal(t, tt.output, out.String())
+			assert.Equal(t, tt.output, buf.String())
 		})
 
 	}
