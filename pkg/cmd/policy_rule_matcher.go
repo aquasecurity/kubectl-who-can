@@ -51,20 +51,20 @@ func (m *matcher) MatchesClusterRole(role rbac.ClusterRole, action Action, gr sc
 
 // matches returns `true` if the given PolicyRule matches the specified Action, `false` otherwise.
 func (m *matcher) matches(rule rbac.PolicyRule, action Action, gr schema.GroupResource) bool {
-	if action.nonResourceURL != "" {
-		return m.matchesVerb(rule, action.verb) &&
-			m.matchesNonResourceURL(rule, action.nonResourceURL)
+	if action.NonResourceURL != "" {
+		return m.matchesVerb(rule, action.Verb) &&
+			m.matchesNonResourceURL(rule, action.NonResourceURL)
 	}
 
 	resource := gr.Resource
-	if action.subResource != "" {
-		resource += "/" + action.subResource
+	if action.SubResource != "" {
+		resource += "/" + action.SubResource
 	}
 
-	return m.matchesVerb(rule, action.verb) &&
+	return m.matchesVerb(rule, action.Verb) &&
 		m.matchesResource(rule, resource) &&
 		m.matchesAPIGroup(rule, gr.Group) &&
-		m.matchesResourceName(rule, action.resourceName)
+		m.matchesResourceName(rule, action.ResourceName)
 }
 
 func (m *matcher) matchesAPIGroup(rule rbac.PolicyRule, actionGroup string) bool {

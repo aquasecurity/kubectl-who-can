@@ -21,6 +21,8 @@ import (
 	"github.com/golang/glog"
 	rbac "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	// Load all known auth plugins
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
 const (
@@ -70,15 +72,15 @@ NONRESOURCEURL is a partial URL that starts with "/".`
 
 // Action represents an action a subject can be given permission to.
 type Action struct {
-	verb         string
-	resource     string
-	resourceName string
-	subResource  string
+	Verb         string
+	Resource     string
+	ResourceName string
+	SubResource  string
 
-	nonResourceURL string
+	NonResourceURL string
 
-	namespace     string
-	allNamespaces bool
+	Namespace     string
+	AllNamespaces bool
 }
 
 // roles is a set of Role names matching the specified Action.
@@ -87,7 +89,7 @@ type roles map[string]struct{}
 // clusterRoles is a set of ClusterRole names matching the specified Action.
 type clusterRoles map[string]struct{}
 
-type whoCan struct {
+type WhoCan struct {
 	clientNamespace clientcore.NamespaceInterface
 	clientRBAC      clientrbac.RbacV1Interface
 
@@ -98,7 +100,7 @@ type whoCan struct {
 	resourceResolver ResourceResolver
 }
 
-func NewWhoCan(clientConfig clientcmd.ClientConfig, mapper meta.RESTMapper) (*whoCan, error) {
+func NewWhoCan(clientConfig clientcmd.ClientConfig, mapper meta.RESTMapper) (*WhoCan, error) {
 	config, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, err
@@ -111,7 +113,7 @@ func NewWhoCan(clientConfig clientcmd.ClientConfig, mapper meta.RESTMapper) (*wh
 
 	clientNamespace := client.CoreV1().Namespaces()
 
-	return &whoCan{
+	return &WhoCan{
 		clientNamespace:    clientNamespace,
 		clientRBAC:         client.RbacV1(),
 		namespaceValidator: NewNamespaceValidator(clientNamespace),
@@ -183,88 +185,88 @@ func ResolveAction(config clientcmd.ClientConfig, flags *pflag.FlagSet, args []s
 		return
 	}
 
-	action.verb = args[0]
+	action.Verb = args[0]
 	if strings.HasPrefix(args[1], "/") {
-		action.nonResourceURL = args[1]
-		glog.V(3).Infof("Resolved nonResourceURL `%s`", action.nonResourceURL)
+		action.NonResourceURL = args[1]
+		glog.V(3).Infof("Resolved nonResourceURL `%s`", action.NonResourceURL)
 	} else {
 		resourceTokens := strings.SplitN(args[1], "/", 2)
-		action.resource = resourceTokens[0]
+		action.Resource = resourceTokens[0]
 		if len(resourceTokens) > 1 {
-			action.resourceName = resourceTokens[1]
-			glog.V(3).Infof("Resolved resourceName `%s`", action.resourceName)
+			action.ResourceName = resourceTokens[1]
+			glog.V(3).Infof("Resolved resourceName `%s`", action.ResourceName)
 		}
 	}
 
-	action.subResource, err = flags.GetString(subResourceFlag)
+	action.SubResource, err = flags.GetString(subResourceFlag)
 	if err != nil {
 		return
 	}
 
-	action.allNamespaces, err = flags.GetBool(allNamespacesFlag)
+	action.AllNamespaces, err = flags.GetBool(allNamespacesFlag)
 	if err != nil {
 		return
 	}
 
-	if action.allNamespaces {
-		action.namespace = core.NamespaceAll
-		glog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", action.namespace)
+	if action.AllNamespaces {
+		action.Namespace = core.NamespaceAll
+		glog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", action.Namespace)
 		return
 	}
 
-	action.namespace, err = flags.GetString(namespaceFlag)
+	action.Namespace, err = flags.GetString(namespaceFlag)
 	if err != nil {
 		return
 	}
 
-	if action.namespace != "" {
-		glog.V(3).Infof("Resolved namespace `%s` from --namespace flag", action.namespace)
+	if action.Namespace != "" {
+		glog.V(3).Infof("Resolved namespace `%s` from --namespace flag", action.Namespace)
 		return
 	}
 
 	// Neither --all-namespaces nor --namespace flag was specified
-	action.namespace, _, err = config.Namespace()
+	action.Namespace, _, err = config.Namespace()
 	if err != nil {
 		err = fmt.Errorf("getting namespace from current context: %v", err)
 		return
 	}
-	glog.V(3).Infof("Resolved namespace `%s` from current context", action.namespace)
+	glog.V(3).Infof("Resolved namespace `%s` from current context", action.Namespace)
 	return
 }
 
 // Check checks who can perform the specified action based on the current RBAC config.
-func (w *whoCan) Check(action Action) ([]rbac.RoleBinding, []rbac.ClusterRoleBinding, error) {
+func (w *WhoCan) Check(action Action) ([]rbac.RoleBinding, []rbac.ClusterRoleBinding, error) {
 	err := w.validate(action)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	gr, err := w.resourceResolver.Resolve(action.verb, action.resource, action.subResource)
+	gr, err := w.resourceResolver.Resolve(action.Verb, action.Resource, action.SubResource)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolving resource: %v", err)
 	}
 	glog.V(3).Infof("Resolved resource `%s`", gr.String())
 
 	// Get the Roles that relate to the Verbs and Resources we are interested in
-	roleNames, err := w.GetRolesFor(action, gr)
+	roleNames, err := w.getRolesFor(action, gr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting Roles: %v", err)
 	}
 
 	// Get the ClusterRoles that relate to the verbs and resources we are interested in
-	clusterRoleNames, err := w.GetClusterRolesFor(action, gr)
+	clusterRoleNames, err := w.getClusterRolesFor(action, gr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting ClusterRoles: %v", err)
 	}
 
 	// Get the RoleBindings that relate to this set of Roles or ClusterRoles
-	roleBindings, err := w.GetRoleBindings(action, roleNames, clusterRoleNames)
+	roleBindings, err := w.getRoleBindings(action, roleNames, clusterRoleNames)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting RoleBindings: %v", err)
 	}
 
 	// Get the ClusterRoleBindings that relate to this set of ClusterRoles
-	clusterRoleBindings, err := w.GetClusterRoleBindings(clusterRoleNames)
+	clusterRoleBindings, err := w.getClusterRoleBindings(clusterRoleNames)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting ClusterRoleBindings: %v", err)
 	}
@@ -273,12 +275,12 @@ func (w *whoCan) Check(action Action) ([]rbac.RoleBinding, []rbac.ClusterRoleBin
 }
 
 // Validate makes sure that provided action properties are valid.
-func (w *whoCan) validate(action Action) error {
-	if action.nonResourceURL != "" && action.subResource != "" {
+func (w *WhoCan) validate(action Action) error {
+	if action.NonResourceURL != "" && action.SubResource != "" {
 		return fmt.Errorf("--subresource cannot be used with NONRESOURCEURL")
 	}
 
-	err := w.namespaceValidator.Validate(action.namespace)
+	err := w.namespaceValidator.Validate(action.Namespace)
 	if err != nil {
 		return fmt.Errorf("validating namespace: %v", err)
 	}
@@ -286,7 +288,7 @@ func (w *whoCan) validate(action Action) error {
 	return nil
 }
 
-func (w *whoCan) CheckAPIAccess(action Action) ([]string, error) {
+func (w *WhoCan) CheckAPIAccess(action Action) ([]string, error) {
 	type check struct {
 		verb      string
 		resource  string
@@ -297,7 +299,7 @@ func (w *whoCan) CheckAPIAccess(action Action) ([]string, error) {
 	var warnings []string
 
 	// Determine which checks need to be executed.
-	if action.namespace == "" {
+	if action.Namespace == "" {
 		checks = append(checks, check{"list", "namespaces", ""})
 
 		nsList, err := w.clientNamespace.List(metav1.ListOptions{})
@@ -309,8 +311,8 @@ func (w *whoCan) CheckAPIAccess(action Action) ([]string, error) {
 			checks = append(checks, check{"list", "rolebindings", ns.Name})
 		}
 	} else {
-		checks = append(checks, check{"list", "roles", action.namespace})
-		checks = append(checks, check{"list", "rolebindings", action.namespace})
+		checks = append(checks, check{"list", "roles", action.Namespace})
+		checks = append(checks, check{"list", "rolebindings", action.Namespace})
 	}
 
 	// Actually run the checks and collect warnings.
@@ -336,8 +338,8 @@ func (w *whoCan) CheckAPIAccess(action Action) ([]string, error) {
 }
 
 // GetRolesFor returns a set of names of Roles matching the specified Action.
-func (w *whoCan) GetRolesFor(action Action, gr schema.GroupResource) (roles, error) {
-	rl, err := w.clientRBAC.Roles(action.namespace).List(metav1.ListOptions{})
+func (w *WhoCan) getRolesFor(action Action, gr schema.GroupResource) (roles, error) {
+	rl, err := w.clientRBAC.Roles(action.Namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +358,7 @@ func (w *whoCan) GetRolesFor(action Action, gr schema.GroupResource) (roles, err
 }
 
 // GetClusterRolesFor returns a set of names of ClusterRoles matching the specified Action.
-func (w *whoCan) GetClusterRolesFor(action Action, gr schema.GroupResource) (clusterRoles, error) {
+func (w *WhoCan) getClusterRolesFor(action Action, gr schema.GroupResource) (clusterRoles, error) {
 	crl, err := w.clientRBAC.ClusterRoles().List(metav1.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -375,13 +377,13 @@ func (w *whoCan) GetClusterRolesFor(action Action, gr schema.GroupResource) (clu
 }
 
 // GetRoleBindings returns the RoleBindings that refer to the given set of Role names or ClusterRole names.
-func (w *whoCan) GetRoleBindings(action Action, roleNames roles, clusterRoleNames clusterRoles) (roleBindings []rbac.RoleBinding, err error) {
+func (w *WhoCan) getRoleBindings(action Action, roleNames roles, clusterRoleNames clusterRoles) (roleBindings []rbac.RoleBinding, err error) {
 	// TODO I'm wondering if GetRoleBindings should be invoked at all when the --all-namespaces flag is specified?
-	if action.namespace == core.NamespaceAll {
+	if action.Namespace == core.NamespaceAll {
 		return
 	}
 
-	list, err := w.clientRBAC.RoleBindings(action.namespace).List(metav1.ListOptions{})
+	list, err := w.clientRBAC.RoleBindings(action.Namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return
 	}
@@ -402,7 +404,7 @@ func (w *whoCan) GetRoleBindings(action Action, roleNames roles, clusterRoleName
 }
 
 // GetClusterRoleBindings returns the ClusterRoleBindings that refer to the given sef of ClusterRole names.
-func (w *whoCan) GetClusterRoleBindings(clusterRoleNames clusterRoles) (clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
+func (w *WhoCan) getClusterRoleBindings(clusterRoleNames clusterRoles) (clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
 	list, err := w.clientRBAC.ClusterRoleBindings().List(metav1.ListOptions{})
 	if err != nil {
 		return
@@ -433,7 +435,7 @@ func PrintChecks(out io.Writer, action Action, roleBindings []rbac.RoleBinding, 
 
 	actionStr := action.PrettyPrint()
 
-	if action.resource != "" {
+	if action.Resource != "" {
 		// NonResourceURL permissions can only be granted through ClusterRoles. Hence no point in printing RoleBindings section.
 		if len(roleBindings) == 0 {
 			fmt.Fprintf(out, "No subjects found with permissions to %s assigned through RoleBindings\n", actionStr)
@@ -463,12 +465,12 @@ func PrintChecks(out io.Writer, action Action, roleBindings []rbac.RoleBinding, 
 }
 
 func (w Action) PrettyPrint() string {
-	if w.nonResourceURL != "" {
-		return fmt.Sprintf("%s %s", w.verb, w.nonResourceURL)
+	if w.NonResourceURL != "" {
+		return fmt.Sprintf("%s %s", w.Verb, w.NonResourceURL)
 	}
-	name := w.resourceName
+	name := w.ResourceName
 	if name != "" {
 		name = "/" + name
 	}
-	return fmt.Sprintf("%s %s%s", w.verb, w.resource, name)
+	return fmt.Sprintf("%s %s%s", w.Verb, w.Resource, name)
 }

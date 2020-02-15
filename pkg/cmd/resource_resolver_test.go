@@ -69,7 +69,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 	}{
 		{
 			scenario: "A",
-			action:   Action{verb: "list", resource: "pods"},
+			action:   Action{Verb: "list", Resource: "pods"},
 			mappingResult: &mappingResult{
 				argGVR:    schema.GroupVersionResource{Resource: "pods"},
 				returnGVR: podsGVR,
@@ -78,7 +78,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 		},
 		{
 			scenario: "B",
-			action:   Action{verb: "list", resource: "po"},
+			action:   Action{Verb: "list", Resource: "po"},
 			mappingResult: &mappingResult{
 				argGVR:    schema.GroupVersionResource{Resource: "po"},
 				returnGVR: podsGVR,
@@ -87,7 +87,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 		},
 		{
 			scenario: "C",
-			action:   Action{verb: "eat", resource: "pods"},
+			action:   Action{Verb: "eat", Resource: "pods"},
 			mappingResult: &mappingResult{
 				argGVR:    schema.GroupVersionResource{Resource: "pods"},
 				returnGVR: podsGVR,
@@ -96,7 +96,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 		},
 		{
 			scenario: "D",
-			action:   Action{verb: "list", resource: "deployments.extensions"},
+			action:   Action{Verb: "list", Resource: "deployments.extensions"},
 			mappingResult: &mappingResult{
 				argGVR:    schema.GroupVersionResource{Group: "extensions", Version: "", Resource: "deployments"},
 				returnGVR: deploymentsGVR,
@@ -105,7 +105,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 		},
 		{
 			scenario: "E",
-			action:   Action{verb: "get", resource: "pods", subResource: "log"},
+			action:   Action{Verb: "get", Resource: "pods", SubResource: "log"},
 			mappingResult: &mappingResult{
 				argGVR:    schema.GroupVersionResource{Resource: "pods"},
 				returnGVR: podsGVR,
@@ -114,7 +114,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 		},
 		{
 			scenario: "F",
-			action:   Action{verb: "get", resource: "pods", subResource: "logz"},
+			action:   Action{Verb: "get", Resource: "pods", SubResource: "logz"},
 			mappingResult: &mappingResult{
 				argGVR:    schema.GroupVersionResource{Resource: "pods"},
 				returnGVR: podsGVR,
@@ -123,7 +123,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 		},
 		{
 			scenario: "G",
-			action:   Action{verb: "list", resource: "bees"},
+			action:   Action{Verb: "list", Resource: "bees"},
 			mappingResult: &mappingResult{
 				argGVR:      schema.GroupVersionResource{Resource: "bees"},
 				returnError: errors.New("mapping failed"),
@@ -132,7 +132,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 		},
 		{
 			scenario: "H",
-			action:   Action{verb: rbac.VerbAll, resource: "pods"},
+			action:   Action{Verb: rbac.VerbAll, Resource: "pods"},
 			mappingResult: &mappingResult{
 				argGVR:    schema.GroupVersionResource{Resource: "pods"},
 				returnGVR: podsGVR,
@@ -141,7 +141,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 		},
 		{
 			scenario: "I",
-			action:   Action{verb: "list", resource: rbac.ResourceAll},
+			action:   Action{Verb: "list", Resource: rbac.ResourceAll},
 			expected: expected{gr: schema.GroupResource{Resource: rbac.ResourceAll}},
 		},
 	}
@@ -157,7 +157,7 @@ func TestResourceResolver_Resolve(t *testing.T) {
 
 			resolver := NewResourceResolver(client.Discovery(), mapper)
 
-			resource, err := resolver.Resolve(tt.action.verb, tt.action.resource, tt.action.subResource)
+			resource, err := resolver.Resolve(tt.action.Verb, tt.action.Resource, tt.action.SubResource)
 
 			assert.Equal(t, tt.expected.err, err)
 			assert.Equal(t, tt.expected.gr, resource)

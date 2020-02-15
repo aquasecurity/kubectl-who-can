@@ -92,7 +92,7 @@ func TestIntegration(t *testing.T) {
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
 			streams, _, out, _ := clioptions.NewTestIOStreams()
-			root, err := cmd.NewCmdWhoCan(streams)
+			root, err := cmd.NewWhoCanCommand(streams)
 			require.NoError(t, err)
 
 			root.SetArgs(tt.args)
