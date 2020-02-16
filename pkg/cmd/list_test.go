@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -60,11 +61,6 @@ type policyRuleMatcherMock struct {
 	mock.Mock
 }
 
-func (prm *policyRuleMatcherMock) Matches(rule rbac.PolicyRule, action Action) bool {
-	args := prm.Called(rule, action)
-	return args.Bool(0)
-}
-
 func (prm *policyRuleMatcherMock) MatchesRole(role rbac.Role, action Action) bool {
 	args := prm.Called(role, action)
 	return args.Bool(0)
@@ -83,6 +79,7 @@ func TestComplete(t *testing.T) {
 	}
 
 	type flags struct {
+		subResource   string
 		namespace     string
 		allNamespaces bool
 	}
@@ -198,10 +195,7 @@ func TestComplete(t *testing.T) {
 
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
-			// setup
-			configFlags := &clioptions.ConfigFlags{
-				Namespace: &tt.flags.namespace,
-			}
+			//setup
 
 			kubeClient := fake.NewSimpleClientset()
 			clientConfig := new(clientConfigMock)
@@ -224,7 +218,6 @@ func TestComplete(t *testing.T) {
 					namespace:     tt.flags.namespace,
 					allNamespaces: tt.flags.allNamespaces,
 				},
-				configFlags:        configFlags,
 				clientConfig:       clientConfig,
 				clientNamespace:    kubeClient.CoreV1().Namespaces(),
 				clientRBAC:         kubeClient.RbacV1(),
@@ -235,8 +228,13 @@ func TestComplete(t *testing.T) {
 				IOStreams:          clioptions.NewTestIOStreamsDiscard(),
 			}
 
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			flags.String(namespaceFlag, tt.flags.namespace, "")
+			flags.Bool(allNamespacesFlag, tt.flags.allNamespaces, "")
+			flags.String(subResourceFlag, "", "")
+
 			// when
-			err := o.Complete(tt.args)
+			err := o.Complete(flags, tt.args)
 
 			// then
 			assert.Equal(t, tt.expected.err, err)
@@ -307,7 +305,7 @@ func TestValidate(t *testing.T) {
 			}
 
 			// when
-			err := o.Validate()
+			err := o.validate()
 
 			// then
 			assert.Equal(t, tt.expectedErr, err)
@@ -404,7 +402,6 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 				Action: Action{
 					namespace: tt.namespace,
 				},
-				configFlags:        configFlags,
 				clientConfig:       configFlags.ToRawKubeConfigLoader(),
 				clientNamespace:    client.CoreV1().Namespaces(),
 				clientRBAC:         client.RbacV1(),
