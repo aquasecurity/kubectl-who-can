@@ -225,7 +225,6 @@ func TestComplete(t *testing.T) {
 				resourceResolver:   resourceResolver,
 				accessChecker:      accessChecker,
 				policyRuleMatcher:  policyRuleMatcher,
-				IOStreams:          clioptions.NewTestIOStreamsDiscard(),
 			}
 
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
@@ -409,11 +408,10 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 				resourceResolver:   resourceResolver,
 				accessChecker:      accessChecker,
 				policyRuleMatcher:  policyRuleMatcher,
-				IOStreams:          clioptions.NewTestIOStreamsDiscard(),
 			}
 
 			// when
-			warnings, err := wc.checkAPIAccess()
+			warnings, err := wc.CheckAPIAccess()
 
 			// then
 			assert.Equal(t, tt.expectedError, err)
@@ -423,41 +421,6 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 		})
 	}
 
-}
-
-func TestWhoCan_printAPIAccessWarnings(t *testing.T) {
-
-	data := []struct {
-		scenario       string
-		warnings       []string
-		expectedOutput string
-	}{
-		{
-			scenario:       "A",
-			warnings:       []string{"w1", "w2"},
-			expectedOutput: "Warning: The list might not be complete due to missing permission(s):\n\tw1\n\tw2\n\n",
-		},
-		{
-			scenario:       "B",
-			warnings:       []string{},
-			expectedOutput: "",
-		},
-		{
-			scenario:       "C",
-			warnings:       nil,
-			expectedOutput: "",
-		},
-	}
-
-	for _, tt := range data {
-		t.Run(tt.scenario, func(t *testing.T) {
-			var buf bytes.Buffer
-			wc := WhoCan{}
-			wc.Out = &buf
-			wc.printAPIAccessWarnings(tt.warnings)
-			assert.Equal(t, tt.expectedOutput, buf.String())
-		})
-	}
 }
 
 func TestWhoCan_GetRolesFor(t *testing.T) {
@@ -681,7 +644,41 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	assert.Contains(t, bindings, getHealthzBnd)
 }
 
-func TestWhoCan_output(t *testing.T) {
+func TestWhoCan_PrintWarnings(t *testing.T) {
+
+	data := []struct {
+		scenario       string
+		warnings       []string
+		expectedOutput string
+	}{
+		{
+			scenario:       "A",
+			warnings:       []string{"w1", "w2"},
+			expectedOutput: "Warning: The list might not be complete due to missing permission(s):\n\tw1\n\tw2\n\n",
+		},
+		{
+			scenario:       "B",
+			warnings:       []string{},
+			expectedOutput: "",
+		},
+		{
+			scenario:       "C",
+			warnings:       nil,
+			expectedOutput: "",
+		},
+	}
+
+	for _, tt := range data {
+		t.Run(tt.scenario, func(t *testing.T) {
+			var buf bytes.Buffer
+			wc := WhoCan{}
+			wc.PrintWarnings(&buf, tt.warnings)
+			assert.Equal(t, tt.expectedOutput, buf.String())
+		})
+	}
+}
+
+func TestWhoCan_PrintChecks(t *testing.T) {
 	data := []struct {
 		scenario string
 
@@ -754,7 +751,7 @@ Bob-and-Eve-can-view-pods  Eve      User
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
 			// given
-			streams, _, out, _ := clioptions.NewTestIOStreams()
+			var buf bytes.Buffer
 			wc := WhoCan{
 				Action: Action{
 					verb:           tt.verb,
@@ -762,14 +759,13 @@ Bob-and-Eve-can-view-pods  Eve      User
 					nonResourceURL: tt.nonResourceURL,
 					resourceName:   tt.resourceName,
 				},
-				IOStreams: streams,
 			}
 
 			// when
-			wc.output(tt.roleBindings, tt.clusterRoleBindings)
+			wc.PrintChecks(&buf, tt.roleBindings, tt.clusterRoleBindings)
 
 			// then
-			assert.Equal(t, tt.output, out.String())
+			assert.Equal(t, tt.output, buf.String())
 		})
 
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"io"
 	core "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -96,11 +97,9 @@ type WhoCan struct {
 	resourceResolver   ResourceResolver
 	accessChecker      AccessChecker
 	policyRuleMatcher  PolicyRuleMatcher
-
-	clioptions.IOStreams
 }
 
-func NewWhoCan(clientConfig clientcmd.ClientConfig, mapper apimeta.RESTMapper, streams clioptions.IOStreams) (*WhoCan, error) {
+func NewWhoCan(clientConfig clientcmd.ClientConfig, mapper apimeta.RESTMapper) (*WhoCan, error) {
 	config, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, err
@@ -119,7 +118,6 @@ func NewWhoCan(clientConfig clientcmd.ClientConfig, mapper apimeta.RESTMapper, s
 		resourceResolver:   NewResourceResolver(client.Discovery(), mapper),
 		accessChecker:      NewAccessChecker(client.AuthorizationV1().SelfSubjectAccessReviews()),
 		policyRuleMatcher:  NewPolicyRuleMatcher(),
-		IOStreams:          streams,
 	}, nil
 }
 
@@ -139,7 +137,7 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 				return fmt.Errorf("getting mapper: %v", err)
 			}
 
-			o, err := NewWhoCan(clientConfig, mapper, streams)
+			o, err := NewWhoCan(clientConfig, mapper)
 			if err != nil {
 				return err
 			}
@@ -148,13 +146,21 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 				return err
 			}
 
+			warnings, err := o.CheckAPIAccess()
+			if err != nil {
+				return err
+			}
+
+			// Output warnings
+			o.PrintWarnings(streams.Out, warnings)
+
 			roleBindings, clusterRoleBindings, err := o.Check()
 			if err != nil {
 				return err
 			}
 
-			// Output the results
-			o.output(roleBindings, clusterRoleBindings)
+			// Output check results
+			o.PrintChecks(streams.Out, roleBindings, clusterRoleBindings)
 
 			return nil
 		},
@@ -269,12 +275,6 @@ func (w *WhoCan) validate() error {
 // Check checks who can perform the action specified by WhoCanOptions and returns the role bindings that allows the
 // action to be performed.
 func (w *WhoCan) Check() (roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
-	warnings, err := w.checkAPIAccess()
-	if err != nil {
-		err = fmt.Errorf("checking API access: %v", err)
-		return
-	}
-
 	err = w.validate()
 	if err != nil {
 		err = fmt.Errorf("validationg args: %v", err)
@@ -307,13 +307,10 @@ func (w *WhoCan) Check() (roleBindings []rbac.RoleBinding, clusterRoleBindings [
 		return
 	}
 
-	// Output warnings
-	w.printAPIAccessWarnings(warnings)
-
 	return
 }
 
-func (w *WhoCan) checkAPIAccess() ([]string, error) {
+func (w *WhoCan) CheckAPIAccess() ([]string, error) {
 	type check struct {
 		verb      string
 		resource  string
@@ -360,16 +357,6 @@ func (w *WhoCan) checkAPIAccess() ([]string, error) {
 	}
 
 	return warnings, nil
-}
-
-func (w *WhoCan) printAPIAccessWarnings(warnings []string) {
-	if len(warnings) > 0 {
-		_, _ = fmt.Fprintln(w.Out, "Warning: The list might not be complete due to missing permission(s):")
-		for _, warning := range warnings {
-			_, _ = fmt.Fprintf(w.Out, "\t%s\n", warning)
-		}
-		_, _ = fmt.Fprintln(w.Out)
-	}
 }
 
 // GetRolesFor returns a set of names of Roles matching the specified Action.
@@ -432,8 +419,6 @@ func (w *WhoCan) GetRoleBindings(roleNames roles, clusterRoleNames clusterRoles)
 			if _, ok := clusterRoleNames[roleBinding.RoleRef.Name]; ok {
 				roleBindings = append(roleBindings, roleBinding)
 			}
-		} else {
-			_, _ = fmt.Fprintf(w.Out, "Warning: Unrecognized RoleRef kind `%s` found in `%s` RoleBinding\n", roleBinding.RoleRef.Kind, roleBinding.Name)
 		}
 	}
 
@@ -456,16 +441,26 @@ func (w *WhoCan) GetClusterRoleBindings(clusterRoleNames clusterRoles) (clusterR
 	return
 }
 
-func (w *WhoCan) output(roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
+func (w *WhoCan) PrintWarnings(out io.Writer, warnings []string) {
+	if len(warnings) > 0 {
+		_, _ = fmt.Fprintln(out, "Warning: The list might not be complete due to missing permission(s):")
+		for _, warning := range warnings {
+			_, _ = fmt.Fprintf(out, "\t%s\n", warning)
+		}
+		_, _ = fmt.Fprintln(out)
+	}
+}
+
+func (w *WhoCan) PrintChecks(out io.Writer, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
 	wr := new(tabwriter.Writer)
-	wr.Init(w.Out, 0, 8, 2, ' ', 0)
+	wr.Init(out, 0, 8, 2, ' ', 0)
 
 	action := w.Action.PrettyPrint()
 
 	if w.resource != "" {
 		// NonResourceURL permissions can only be granted through ClusterRoles. Hence no point in printing RoleBindings section.
 		if len(roleBindings) == 0 {
-			fmt.Fprintf(w.Out, "No subjects found with permissions to %s assigned through RoleBindings\n", action)
+			fmt.Fprintf(out, "No subjects found with permissions to %s assigned through RoleBindings\n", action)
 		} else {
 			fmt.Fprintln(wr, "ROLEBINDING\tNAMESPACE\tSUBJECT\tTYPE\tSA-NAMESPACE")
 			for _, rb := range roleBindings {
@@ -479,7 +474,7 @@ func (w *WhoCan) output(roleBindings []rbac.RoleBinding, clusterRoleBindings []r
 	}
 
 	if len(clusterRoleBindings) == 0 {
-		fmt.Fprintf(w.Out, "No subjects found with permissions to %s assigned through ClusterRoleBindings\n", action)
+		fmt.Fprintf(out, "No subjects found with permissions to %s assigned through ClusterRoleBindings\n", action)
 	} else {
 		fmt.Fprintln(wr, "CLUSTERROLEBINDING\tSUBJECT\tTYPE\tSA-NAMESPACE")
 		for _, rb := range clusterRoleBindings {
