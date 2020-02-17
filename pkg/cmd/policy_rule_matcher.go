@@ -11,8 +11,8 @@ import (
 //
 // MatchesClusterRole returns `true` if any PolicyRule defined by the given ClusterRole matches the specified Action, `false` otherwise.
 type PolicyRuleMatcher interface {
-	MatchesRole(role rbac.Role, action Action) bool
-	MatchesClusterRole(role rbac.ClusterRole, action Action) bool
+	MatchesRole(role rbac.Role, action resolvedAction) bool
+	MatchesClusterRole(role rbac.ClusterRole, action resolvedAction) bool
 }
 
 type matcher struct {
@@ -23,7 +23,7 @@ func NewPolicyRuleMatcher() PolicyRuleMatcher {
 	return &matcher{}
 }
 
-func (m *matcher) MatchesRole(role rbac.Role, action Action) bool {
+func (m *matcher) MatchesRole(role rbac.Role, action resolvedAction) bool {
 	for _, rule := range role.Rules {
 		if !m.matches(rule, action) {
 			continue
@@ -35,7 +35,7 @@ func (m *matcher) MatchesRole(role rbac.Role, action Action) bool {
 	return false
 }
 
-func (m *matcher) MatchesClusterRole(role rbac.ClusterRole, action Action) bool {
+func (m *matcher) MatchesClusterRole(role rbac.ClusterRole, action resolvedAction) bool {
 	for _, rule := range role.Rules {
 		if !m.matches(rule, action) {
 			continue
@@ -49,7 +49,7 @@ func (m *matcher) MatchesClusterRole(role rbac.ClusterRole, action Action) bool 
 }
 
 // matches returns `true` if the given PolicyRule matches the specified Action, `false` otherwise.
-func (m *matcher) matches(rule rbac.PolicyRule, action Action) bool {
+func (m *matcher) matches(rule rbac.PolicyRule, action resolvedAction) bool {
 	if action.nonResourceURL != "" {
 		return m.matchesVerb(rule, action.verb) &&
 			m.matchesNonResourceURL(rule, action.nonResourceURL)
