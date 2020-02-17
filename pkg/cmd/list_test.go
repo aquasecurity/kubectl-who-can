@@ -61,17 +61,17 @@ type policyRuleMatcherMock struct {
 	mock.Mock
 }
 
-func (prm *policyRuleMatcherMock) MatchesRole(role rbac.Role, action Action) bool {
+func (prm *policyRuleMatcherMock) MatchesRole(role rbac.Role, action resolvedAction) bool {
 	args := prm.Called(role, action)
 	return args.Bool(0)
 }
 
-func (prm *policyRuleMatcherMock) MatchesClusterRole(role rbac.ClusterRole, action Action) bool {
+func (prm *policyRuleMatcherMock) MatchesClusterRole(role rbac.ClusterRole, action resolvedAction) bool {
 	args := prm.Called(role, action)
 	return args.Bool(0)
 }
 
-func TestResolveAction(t *testing.T) {
+func TestActionFrom(t *testing.T) {
 
 	type currentContext struct {
 		namespace string
@@ -174,7 +174,7 @@ func TestResolveAction(t *testing.T) {
 			flags.String(subResourceFlag, "", "")
 
 			// when
-			o, err := ResolveAction(clientConfig, flags, tt.args)
+			o, err := ActionFrom(clientConfig, flags, tt.args)
 
 			// then
 			assert.Equal(t, tt.expectedError, err)
@@ -232,16 +232,17 @@ func TestValidate(t *testing.T) {
 			}
 
 			o := &WhoCan{
-				Action: Action{
-					nonResourceURL: tt.nonResourceURL,
-					subResource:    tt.subResource,
-					namespace:      tt.namespace,
-				},
 				namespaceValidator: namespaceValidator,
 			}
 
+			action := Action{
+				nonResourceURL: tt.nonResourceURL,
+				subResource:    tt.subResource,
+				namespace:      tt.namespace,
+			}
+
 			// when
-			err := o.validate()
+			err := o.validate(action)
 
 			// then
 			assert.Equal(t, tt.expectedErr, err)
@@ -250,7 +251,7 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-func TestWhoCan_checkAPIAccess(t *testing.T) {
+func TestWhoCan_CheckAPIAccess(t *testing.T) {
 	const (
 		FooNs = "foo"
 		BarNs = "bar"
@@ -335,9 +336,6 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 			// given
 			configFlags := &clioptions.ConfigFlags{}
 			wc := WhoCan{
-				Action: Action{
-					namespace: tt.namespace,
-				},
 				clientConfig:       configFlags.ToRawKubeConfigLoader(),
 				clientNamespace:    client.CoreV1().Namespaces(),
 				clientRBAC:         client.RbacV1(),
@@ -346,9 +344,12 @@ func TestWhoCan_checkAPIAccess(t *testing.T) {
 				accessChecker:      accessChecker,
 				policyRuleMatcher:  policyRuleMatcher,
 			}
+			action := Action{
+				namespace: tt.namespace,
+			}
 
 			// when
-			warnings, err := wc.CheckAPIAccess()
+			warnings, err := wc.CheckAPIAccess(action)
 
 			// then
 			assert.Equal(t, tt.expectedError, err)
@@ -365,7 +366,7 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	policyRuleMatcher := new(policyRuleMatcherMock)
 	client := fake.NewSimpleClientset()
 
-	action := Action{verb: "list", resource: "services"}
+	action := resolvedAction{Action: Action{verb: "list", resource: "services"}}
 
 	viewServicesRole := rbac.Role{
 		ObjectMeta: meta.ObjectMeta{
@@ -411,7 +412,7 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	}
 
 	// when
-	names, err := wc.GetRolesFor(action)
+	names, err := wc.getRolesFor(action)
 
 	// then
 	require.NoError(t, err)
@@ -424,7 +425,7 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	policyRuleMatcher := new(policyRuleMatcherMock)
 	client := fake.NewSimpleClientset()
 
-	action := Action{verb: "get", resource: "/logs"}
+	action := resolvedAction{Action: Action{verb: "get", resource: "/logs"}}
 
 	getLogsRole := rbac.ClusterRole{
 		ObjectMeta: meta.ObjectMeta{
@@ -470,7 +471,7 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	}
 
 	// when
-	names, err := wc.GetClusterRolesFor(action)
+	names, err := wc.getClusterRolesFor(action)
 
 	// then
 	require.NoError(t, err)
@@ -519,11 +520,11 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 
 	wc := WhoCan{
 		clientRBAC: client.RbacV1(),
-		Action:     Action{namespace: namespace},
 	}
+	action := resolvedAction{Action: Action{namespace: namespace}}
 
 	// when
-	bindings, err := wc.GetRoleBindings(roleNames, clusterRoleNames)
+	bindings, err := wc.getRoleBindings(action, roleNames, clusterRoleNames)
 
 	// then
 	require.NoError(t, err)
@@ -573,7 +574,7 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	}
 
 	// when
-	bindings, err := wc.GetClusterRoleBindings(clusterRoleNames)
+	bindings, err := wc.getClusterRoleBindings(clusterRoleNames)
 
 	// then
 	require.NoError(t, err)
@@ -581,7 +582,7 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	assert.Contains(t, bindings, getHealthzBnd)
 }
 
-func TestWhoCan_PrintWarnings(t *testing.T) {
+func TestPrintWarnings(t *testing.T) {
 
 	data := []struct {
 		scenario       string
@@ -608,14 +609,13 @@ func TestWhoCan_PrintWarnings(t *testing.T) {
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
 			var buf bytes.Buffer
-			wc := WhoCan{}
-			wc.PrintWarnings(&buf, tt.warnings)
+			PrintWarnings(&buf, tt.warnings)
 			assert.Equal(t, tt.expectedOutput, buf.String())
 		})
 	}
 }
 
-func TestWhoCan_PrintChecks(t *testing.T) {
+func TestPrintChecks(t *testing.T) {
 	data := []struct {
 		scenario string
 
@@ -689,17 +689,15 @@ Bob-and-Eve-can-view-pods  Eve      User
 		t.Run(tt.scenario, func(t *testing.T) {
 			// given
 			var buf bytes.Buffer
-			wc := WhoCan{
-				Action: Action{
-					verb:           tt.verb,
-					resource:       tt.resource,
-					nonResourceURL: tt.nonResourceURL,
-					resourceName:   tt.resourceName,
-				},
+			action := Action{
+				verb:           tt.verb,
+				resource:       tt.resource,
+				nonResourceURL: tt.nonResourceURL,
+				resourceName:   tt.resourceName,
 			}
 
 			// when
-			wc.PrintChecks(&buf, tt.roleBindings, tt.clusterRoleBindings)
+			PrintChecks(&buf, action, tt.roleBindings, tt.clusterRoleBindings)
 
 			// then
 			assert.Equal(t, tt.output, buf.String())
