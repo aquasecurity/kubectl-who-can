@@ -259,7 +259,7 @@ func (w *WhoCan) validate(action Action) error {
 func (w *WhoCan) Check(action Action) (roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
 	err = w.validate(action)
 	if err != nil {
-		err = fmt.Errorf("validationg: %v", err)
+		err = fmt.Errorf("validation: %v", err)
 		return
 	}
 
