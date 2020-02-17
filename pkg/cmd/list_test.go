@@ -71,7 +71,7 @@ func (prm *policyRuleMatcherMock) MatchesClusterRole(role rbac.ClusterRole, acti
 	return args.Bool(0)
 }
 
-func TestComplete(t *testing.T) {
+func TestResolveAction(t *testing.T) {
 
 	type currentContext struct {
 		namespace string
@@ -84,41 +84,22 @@ func TestComplete(t *testing.T) {
 		allNamespaces bool
 	}
 
-	type resolution struct {
-		verb        string
-		resource    string
-		subResource string
-
-		gr  schema.GroupResource
-		err error
-	}
-
-	type expected struct {
-		namespace    string
-		verb         string
-		resource     string
-		resourceName string
-		err          error
-	}
-
-	data := []struct {
-		scenario string
+	testCases := []struct {
+		name string
 
 		currentContext *currentContext
+		flags          flags
+		args           []string
 
-		flags      flags
-		args       []string
-		resolution *resolution
-
-		expected expected
+		expectedAction Action
+		expectedError  error
 	}{
 		{
-			scenario:       "A",
+			name:           "A",
 			currentContext: &currentContext{namespace: "foo"},
-			flags:          flags{namespace: "", allNamespaces: false},
 			args:           []string{"list", "pods"},
-			resolution:     &resolution{verb: "list", resource: "pods", gr: schema.GroupResource{Resource: "pods"}},
-			expected: expected{
+			flags:          flags{namespace: "", allNamespaces: false},
+			expectedAction: Action{
 				namespace:    "foo",
 				verb:         "list",
 				resource:     "pods",
@@ -126,105 +107,65 @@ func TestComplete(t *testing.T) {
 			},
 		},
 		{
-			scenario:       "B",
+			name:           "B",
 			currentContext: &currentContext{err: errors.New("cannot open context")},
 			flags:          flags{namespace: "", allNamespaces: false},
 			args:           []string{"list", "pods"},
-			resolution:     &resolution{verb: "list", resource: "pods", gr: schema.GroupResource{Resource: "pods"}},
-			expected: expected{
+			expectedAction: Action{
 				namespace:    "",
 				verb:         "list",
 				resource:     "pods",
 				resourceName: "",
-				err:          errors.New("getting namespace from current context: cannot open context"),
+			},
+			expectedError: errors.New("getting namespace from current context: cannot open context"),
+		},
+		{
+			name:  "C",
+			flags: flags{namespace: "", allNamespaces: true},
+			args:  []string{"get", "service/mongodb"},
+			expectedAction: Action{
+				allNamespaces: true,
+				namespace:     core.NamespaceAll,
+				verb:          "get",
+				resource:      "service",
+				resourceName:  "mongodb",
 			},
 		},
 		{
-			scenario:   "C",
-			flags:      flags{namespace: "", allNamespaces: true},
-			args:       []string{"get", "service/mongodb"},
-			resolution: &resolution{verb: "get", resource: "service", gr: schema.GroupResource{Resource: "services"}},
-			expected: expected{
-				namespace:    core.NamespaceAll,
-				verb:         "get",
-				resource:     "services",
-				resourceName: "mongodb",
-			},
-		},
-		{
-			scenario:   "D",
-			flags:      flags{namespace: "bar", allNamespaces: false},
-			args:       []string{"delete", "pv"},
-			resolution: &resolution{verb: "delete", resource: "pv", gr: schema.GroupResource{Resource: "persistentvolumes"}},
-			expected: expected{
+			name:  "D",
+			flags: flags{namespace: "bar", allNamespaces: false},
+			args:  []string{"delete", "pv"},
+			expectedAction: Action{
 				namespace: "bar",
 				verb:      "delete",
-				resource:  "persistentvolumes",
+				resource:  "pv",
 			},
 		},
 		{
-			scenario:   "E",
-			flags:      flags{allNamespaces: false},
-			args:       []string{"delete", "pv"},
-			resolution: &resolution{verb: "delete", resource: "pv", err: errors.New("failed")},
-			expected: expected{
-				namespace: "",
-				verb:      "delete",
-				err:       errors.New("resolving resource: failed"),
-				resource:  "",
+			name:  "F",
+			flags: flags{namespace: "foo"},
+			args:  []string{"get", "/logs"},
+			expectedAction: Action{
+				namespace:      "foo",
+				verb:           "get",
+				nonResourceURL: "/logs",
 			},
 		},
 		{
-			scenario: "F",
-			flags:    flags{namespace: "foo"},
-			args:     []string{"get", "/logs"},
-			expected: expected{
-				namespace: "foo",
-				verb:      "get",
-				resource:  "",
-			},
-		},
-		{
-			scenario: "G",
-			args:     []string{},
-			expected: expected{
-				err: errors.New("you must specify two or three arguments: verb, resource, and optional resourceName"),
-			},
+			name:          "G",
+			args:          []string{},
+			expectedError: errors.New("you must specify two or three arguments: verb, resource, and optional resourceName"),
 		},
 	}
 
-	for _, tt := range data {
-		t.Run(tt.scenario, func(t *testing.T) {
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
 			//setup
 
-			kubeClient := fake.NewSimpleClientset()
 			clientConfig := new(clientConfigMock)
-			namespaceValidator := new(namespaceValidatorMock)
-			accessChecker := new(accessCheckerMock)
-			resourceResolver := new(resourceResolverMock)
-			policyRuleMatcher := new(policyRuleMatcherMock)
 
-			if tt.resolution != nil {
-				resourceResolver.On("Resolve", tt.resolution.verb, tt.resolution.resource, tt.resolution.subResource).
-					Return(tt.resolution.gr, tt.resolution.err)
-			}
 			if tt.currentContext != nil {
 				clientConfig.On("Namespace").Return(tt.currentContext.namespace, false, tt.currentContext.err)
-			}
-
-			// given
-			o := WhoCan{
-				Action: Action{
-					namespace:     tt.flags.namespace,
-					allNamespaces: tt.flags.allNamespaces,
-				},
-				clientConfig:       clientConfig,
-				clientNamespace:    kubeClient.CoreV1().Namespaces(),
-				clientRBAC:         kubeClient.RbacV1(),
-				namespaceValidator: namespaceValidator,
-				resourceResolver:   resourceResolver,
-				accessChecker:      accessChecker,
-				policyRuleMatcher:  policyRuleMatcher,
 			}
 
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
@@ -233,17 +174,13 @@ func TestComplete(t *testing.T) {
 			flags.String(subResourceFlag, "", "")
 
 			// when
-			err := o.Complete(flags, tt.args)
+			o, err := ResolveAction(clientConfig, flags, tt.args)
 
 			// then
-			assert.Equal(t, tt.expected.err, err)
-			assert.Equal(t, tt.expected.namespace, o.namespace)
-			assert.Equal(t, tt.expected.verb, o.verb)
-			assert.Equal(t, tt.expected.resource, o.gr.Resource)
-			assert.Equal(t, tt.expected.resourceName, o.resourceName)
+			assert.Equal(t, tt.expectedError, err)
+			assert.Equal(t, tt.expectedAction, o)
 
 			clientConfig.AssertExpectations(t)
-			resourceResolver.AssertExpectations(t)
 		})
 
 	}

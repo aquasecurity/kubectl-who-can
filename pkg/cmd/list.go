@@ -142,9 +142,12 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 				return err
 			}
 
-			if err := o.Complete(cmd.Flags(), args); err != nil {
+			action, err := ResolveAction(clientConfig, cmd.Flags(), args)
+			if err != nil {
 				return err
 			}
+			// FIXME This is just intermediate step. At the end the Check() method should accept action as arg.
+			o.Action = action
 
 			warnings, err := o.CheckAPIAccess()
 			if err != nil {
@@ -179,83 +182,58 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 }
 
 // Complete sets all information required to check who can perform the specified action.
-func (w *WhoCan) Complete(flags *pflag.FlagSet, args []string) error {
-	err := w.resolveArgs(flags, args)
-	if err != nil {
-		return err
-	}
-
-	if w.resource != "" {
-		w.gr, err = w.resourceResolver.Resolve(w.verb, w.resource, w.subResource)
-		if err != nil {
-			return fmt.Errorf("resolving resource: %v", err)
-		}
-		glog.V(3).Infof("Resolved resource `%s`", w.resource)
-	}
-
-	err = w.resolveNamespace(flags)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (w *WhoCan) resolveArgs(flags *pflag.FlagSet, args []string) (err error) {
+func ResolveAction(clientConfig clientcmd.ClientConfig, flags *pflag.FlagSet, args []string) (action Action, err error) {
 	if len(args) < 2 {
-		return errors.New("you must specify two or three arguments: verb, resource, and optional resourceName")
+		err = errors.New("you must specify two or three arguments: verb, resource, and optional resourceName")
+		return
 	}
 
-	w.verb = args[0]
+	action.verb = args[0]
 	if strings.HasPrefix(args[1], "/") {
-		w.nonResourceURL = args[1]
-		glog.V(3).Infof("Resolved nonResourceURL `%s`", w.nonResourceURL)
+		action.nonResourceURL = args[1]
+		glog.V(3).Infof("Resolved nonResourceURL `%s`", action.nonResourceURL)
 	} else {
 		resourceTokens := strings.SplitN(args[1], "/", 2)
-		w.resource = resourceTokens[0]
+		action.resource = resourceTokens[0]
 		if len(resourceTokens) > 1 {
-			w.resourceName = resourceTokens[1]
-			glog.V(3).Infof("Resolved resourceName `%s`", w.resourceName)
+			action.resourceName = resourceTokens[1]
+			glog.V(3).Infof("Resolved resourceName `%s`", action.resourceName)
 		}
 	}
 
-	w.subResource, err = flags.GetString(subResourceFlag)
+	action.subResource, err = flags.GetString(subResourceFlag)
 	if err != nil {
 		return
 	}
 
-	return
-}
-
-func (w *WhoCan) resolveNamespace(flags *pflag.FlagSet) (err error) {
-	w.allNamespaces, err = flags.GetBool(allNamespacesFlag)
-	if err != nil {
-		return err
-	}
-
-	if w.allNamespaces {
-		w.namespace = core.NamespaceAll
-		glog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", w.namespace)
-		return nil
-	}
-
-	w.namespace, err = flags.GetString(namespaceFlag)
+	action.allNamespaces, err = flags.GetBool(allNamespacesFlag)
 	if err != nil {
 		return
 	}
 
-	if w.namespace != "" {
-		glog.V(3).Infof("Resolved namespace `%s` from --namespace flag", w.namespace)
-		return nil
+	if action.allNamespaces {
+		action.namespace = core.NamespaceAll
+		glog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", action.namespace)
+		return
+	}
+
+	action.namespace, err = flags.GetString(namespaceFlag)
+	if err != nil {
+		return
+	}
+
+	if action.namespace != "" {
+		glog.V(3).Infof("Resolved namespace `%s` from --namespace flag", action.namespace)
+		return
 	}
 
 	// Neither --all-namespaces nor --namespace flag was specified
-	w.namespace, _, err = w.clientConfig.Namespace()
+	action.namespace, _, err = clientConfig.Namespace()
 	if err != nil {
-		return fmt.Errorf("getting namespace from current context: %v", err)
+		err = fmt.Errorf("getting namespace from current context: %v", err)
 	}
-	glog.V(3).Infof("Resolved namespace `%s` from current context", w.namespace)
-	return nil
+	glog.V(3).Infof("Resolved namespace `%s` from current context", action.namespace)
+	return
 }
 
 // Validate makes sure that provided args and flags are valid.
@@ -279,6 +257,15 @@ func (w *WhoCan) Check() (roleBindings []rbac.RoleBinding, clusterRoleBindings [
 	if err != nil {
 		err = fmt.Errorf("validationg args: %v", err)
 		return
+	}
+
+	if w.resource != "" {
+		w.gr, err = w.resourceResolver.Resolve(w.verb, w.resource, w.subResource)
+		if err != nil {
+			err = fmt.Errorf("resolving resource: %v", err)
+			return
+		}
+		glog.V(3).Infof("Resolved resource `%s`", w.gr.String())
 	}
 
 	// Get the Roles that relate to the Verbs and Resources we are interested in
