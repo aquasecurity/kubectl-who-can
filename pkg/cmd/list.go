@@ -69,15 +69,15 @@ NONRESOURCEURL is a partial URL that starts with "/".`
 
 // Action represents an action a subject can be given permission to.
 type Action struct {
-	verb         string
-	resource     string
-	resourceName string
-	subResource  string
+	Verb         string
+	Resource     string
+	ResourceName string
+	SubResource  string
 
-	nonResourceURL string
+	NonResourceURL string
 
-	namespace     string
-	allNamespaces bool
+	Namespace     string
+	AllNamespaces bool
 }
 
 type resolvedAction struct {
@@ -192,61 +192,61 @@ func ActionFrom(clientConfig clientcmd.ClientConfig, flags *pflag.FlagSet, args 
 		return
 	}
 
-	action.verb = args[0]
+	action.Verb = args[0]
 	if strings.HasPrefix(args[1], "/") {
-		action.nonResourceURL = args[1]
-		glog.V(3).Infof("Resolved nonResourceURL `%s`", action.nonResourceURL)
+		action.NonResourceURL = args[1]
+		glog.V(3).Infof("Resolved nonResourceURL `%s`", action.NonResourceURL)
 	} else {
 		resourceTokens := strings.SplitN(args[1], "/", 2)
-		action.resource = resourceTokens[0]
+		action.Resource = resourceTokens[0]
 		if len(resourceTokens) > 1 {
-			action.resourceName = resourceTokens[1]
-			glog.V(3).Infof("Resolved resourceName `%s`", action.resourceName)
+			action.ResourceName = resourceTokens[1]
+			glog.V(3).Infof("Resolved resourceName `%s`", action.ResourceName)
 		}
 	}
 
-	action.subResource, err = flags.GetString(subResourceFlag)
+	action.SubResource, err = flags.GetString(subResourceFlag)
 	if err != nil {
 		return
 	}
 
-	action.allNamespaces, err = flags.GetBool(allNamespacesFlag)
+	action.AllNamespaces, err = flags.GetBool(allNamespacesFlag)
 	if err != nil {
 		return
 	}
 
-	if action.allNamespaces {
-		action.namespace = core.NamespaceAll
-		glog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", action.namespace)
+	if action.AllNamespaces {
+		action.Namespace = core.NamespaceAll
+		glog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", action.Namespace)
 		return
 	}
 
-	action.namespace, err = flags.GetString(namespaceFlag)
+	action.Namespace, err = flags.GetString(namespaceFlag)
 	if err != nil {
 		return
 	}
 
-	if action.namespace != "" {
-		glog.V(3).Infof("Resolved namespace `%s` from --namespace flag", action.namespace)
+	if action.Namespace != "" {
+		glog.V(3).Infof("Resolved namespace `%s` from --namespace flag", action.Namespace)
 		return
 	}
 
 	// Neither --all-namespaces nor --namespace flag was specified
-	action.namespace, _, err = clientConfig.Namespace()
+	action.Namespace, _, err = clientConfig.Namespace()
 	if err != nil {
 		err = fmt.Errorf("getting namespace from current context: %v", err)
 	}
-	glog.V(3).Infof("Resolved namespace `%s` from current context", action.namespace)
+	glog.V(3).Infof("Resolved namespace `%s` from current context", action.Namespace)
 	return
 }
 
 // Validate makes sure that the specified action is valid.
 func (w *WhoCan) validate(action Action) error {
-	if action.nonResourceURL != "" && action.subResource != "" {
+	if action.NonResourceURL != "" && action.SubResource != "" {
 		return fmt.Errorf("--subresource cannot be used with NONRESOURCEURL")
 	}
 
-	err := w.namespaceValidator.Validate(action.namespace)
+	err := w.namespaceValidator.Validate(action.Namespace)
 	if err != nil {
 		return fmt.Errorf("validating namespace: %v", err)
 	}
@@ -265,8 +265,8 @@ func (w *WhoCan) Check(action Action) (roleBindings []rbac.RoleBinding, clusterR
 
 	resolvedAction := resolvedAction{Action: action}
 
-	if action.resource != "" {
-		resolvedAction.gr, err = w.resourceResolver.Resolve(action.verb, action.resource, action.subResource)
+	if action.Resource != "" {
+		resolvedAction.gr, err = w.resourceResolver.Resolve(action.Verb, action.Resource, action.SubResource)
 		if err != nil {
 			err = fmt.Errorf("resolving resource: %v", err)
 			return
@@ -316,7 +316,7 @@ func (w *WhoCan) CheckAPIAccess(action Action) ([]string, error) {
 	var warnings []string
 
 	// Determine which checks need to be executed.
-	if action.namespace == "" {
+	if action.Namespace == "" {
 		checks = append(checks, check{"list", "namespaces", ""})
 
 		nsList, err := w.clientNamespace.List(meta.ListOptions{})
@@ -328,8 +328,8 @@ func (w *WhoCan) CheckAPIAccess(action Action) ([]string, error) {
 			checks = append(checks, check{"list", "rolebindings", ns.Name})
 		}
 	} else {
-		checks = append(checks, check{"list", "roles", action.namespace})
-		checks = append(checks, check{"list", "rolebindings", action.namespace})
+		checks = append(checks, check{"list", "roles", action.Namespace})
+		checks = append(checks, check{"list", "rolebindings", action.Namespace})
 	}
 
 	// Actually run the checks and collect warnings.
@@ -356,7 +356,7 @@ func (w *WhoCan) CheckAPIAccess(action Action) ([]string, error) {
 
 // GetRolesFor returns a set of names of Roles matching the specified Action.
 func (w *WhoCan) getRolesFor(action resolvedAction) (roles, error) {
-	rl, err := w.clientRBAC.Roles(action.namespace).List(meta.ListOptions{})
+	rl, err := w.clientRBAC.Roles(action.Namespace).List(meta.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -396,11 +396,11 @@ func (w *WhoCan) getClusterRolesFor(action resolvedAction) (clusterRoles, error)
 // GetRoleBindings returns the RoleBindings that refer to the given set of Role names or ClusterRole names.
 func (w *WhoCan) getRoleBindings(action resolvedAction, roleNames roles, clusterRoleNames clusterRoles) (roleBindings []rbac.RoleBinding, err error) {
 	// TODO I'm wondering if GetRoleBindings should be invoked at all when the --all-namespaces flag is specified?
-	if action.namespace == core.NamespaceAll {
+	if action.Namespace == core.NamespaceAll {
 		return
 	}
 
-	list, err := w.clientRBAC.RoleBindings(action.namespace).List(meta.ListOptions{})
+	list, err := w.clientRBAC.RoleBindings(action.Namespace).List(meta.ListOptions{})
 	if err != nil {
 		return
 	}
@@ -454,7 +454,7 @@ func PrintChecks(out io.Writer, action Action, roleBindings []rbac.RoleBinding, 
 
 	actionStr := action.PrettyPrint()
 
-	if action.resource != "" {
+	if action.Resource != "" {
 		// NonResourceURL permissions can only be granted through ClusterRoles. Hence no point in printing RoleBindings section.
 		if len(roleBindings) == 0 {
 			_, _ = fmt.Fprintf(out, "No subjects found with permissions to %s assigned through RoleBindings\n", actionStr)
@@ -484,12 +484,12 @@ func PrintChecks(out io.Writer, action Action, roleBindings []rbac.RoleBinding, 
 }
 
 func (w Action) PrettyPrint() string {
-	if w.nonResourceURL != "" {
-		return fmt.Sprintf("%s %s", w.verb, w.nonResourceURL)
+	if w.NonResourceURL != "" {
+		return fmt.Sprintf("%s %s", w.Verb, w.NonResourceURL)
 	}
-	name := w.resourceName
+	name := w.ResourceName
 	if name != "" {
 		name = "/" + name
 	}
-	return fmt.Sprintf("%s %s%s", w.verb, w.resource, name)
+	return fmt.Sprintf("%s %s%s", w.Verb, w.Resource, name)
 }

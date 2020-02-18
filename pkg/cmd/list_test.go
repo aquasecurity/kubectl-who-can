@@ -100,10 +100,10 @@ func TestActionFrom(t *testing.T) {
 			args:           []string{"list", "pods"},
 			flags:          flags{namespace: "", allNamespaces: false},
 			expectedAction: Action{
-				namespace:    "foo",
-				verb:         "list",
-				resource:     "pods",
-				resourceName: "",
+				Namespace:    "foo",
+				Verb:         "list",
+				Resource:     "pods",
+				ResourceName: "",
 			},
 		},
 		{
@@ -112,10 +112,10 @@ func TestActionFrom(t *testing.T) {
 			flags:          flags{namespace: "", allNamespaces: false},
 			args:           []string{"list", "pods"},
 			expectedAction: Action{
-				namespace:    "",
-				verb:         "list",
-				resource:     "pods",
-				resourceName: "",
+				Namespace:    "",
+				Verb:         "list",
+				Resource:     "pods",
+				ResourceName: "",
 			},
 			expectedError: errors.New("getting namespace from current context: cannot open context"),
 		},
@@ -124,11 +124,11 @@ func TestActionFrom(t *testing.T) {
 			flags: flags{namespace: "", allNamespaces: true},
 			args:  []string{"get", "service/mongodb"},
 			expectedAction: Action{
-				allNamespaces: true,
-				namespace:     core.NamespaceAll,
-				verb:          "get",
-				resource:      "service",
-				resourceName:  "mongodb",
+				AllNamespaces: true,
+				Namespace:     core.NamespaceAll,
+				Verb:          "get",
+				Resource:      "service",
+				ResourceName:  "mongodb",
 			},
 		},
 		{
@@ -136,9 +136,9 @@ func TestActionFrom(t *testing.T) {
 			flags: flags{namespace: "bar", allNamespaces: false},
 			args:  []string{"delete", "pv"},
 			expectedAction: Action{
-				namespace: "bar",
-				verb:      "delete",
-				resource:  "pv",
+				Namespace: "bar",
+				Verb:      "delete",
+				Resource:  "pv",
 			},
 		},
 		{
@@ -146,9 +146,9 @@ func TestActionFrom(t *testing.T) {
 			flags: flags{namespace: "foo"},
 			args:  []string{"get", "/logs"},
 			expectedAction: Action{
-				namespace:      "foo",
-				verb:           "get",
-				nonResourceURL: "/logs",
+				Namespace:      "foo",
+				Verb:           "get",
+				NonResourceURL: "/logs",
 			},
 		},
 		{
@@ -236,9 +236,9 @@ func TestValidate(t *testing.T) {
 			}
 
 			action := Action{
-				nonResourceURL: tt.nonResourceURL,
-				subResource:    tt.subResource,
-				namespace:      tt.namespace,
+				NonResourceURL: tt.nonResourceURL,
+				SubResource:    tt.subResource,
+				Namespace:      tt.namespace,
 			}
 
 			// when
@@ -345,7 +345,7 @@ func TestWhoCan_CheckAPIAccess(t *testing.T) {
 				policyRuleMatcher:  policyRuleMatcher,
 			}
 			action := Action{
-				namespace: tt.namespace,
+				Namespace: tt.namespace,
 			}
 
 			// when
@@ -366,7 +366,7 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	policyRuleMatcher := new(policyRuleMatcherMock)
 	client := fake.NewSimpleClientset()
 
-	action := resolvedAction{Action: Action{verb: "list", resource: "services"}}
+	action := resolvedAction{Action: Action{Verb: "list", Resource: "services"}}
 
 	viewServicesRole := rbac.Role{
 		ObjectMeta: meta.ObjectMeta{
@@ -425,7 +425,7 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	policyRuleMatcher := new(policyRuleMatcherMock)
 	client := fake.NewSimpleClientset()
 
-	action := resolvedAction{Action: Action{verb: "get", resource: "/logs"}}
+	action := resolvedAction{Action: Action{Verb: "get", Resource: "/logs"}}
 
 	getLogsRole := rbac.ClusterRole{
 		ObjectMeta: meta.ObjectMeta{
@@ -521,7 +521,7 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 	wc := WhoCan{
 		clientRBAC: client.RbacV1(),
 	}
-	action := resolvedAction{Action: Action{namespace: namespace}}
+	action := resolvedAction{Action: Action{Namespace: namespace}}
 
 	// when
 	bindings, err := wc.getRoleBindings(action, roleNames, clusterRoleNames)
@@ -690,10 +690,10 @@ Bob-and-Eve-can-view-pods  Eve      User
 			// given
 			var buf bytes.Buffer
 			action := Action{
-				verb:           tt.verb,
-				resource:       tt.resource,
-				nonResourceURL: tt.nonResourceURL,
-				resourceName:   tt.resourceName,
+				Verb:           tt.verb,
+				Resource:       tt.resource,
+				NonResourceURL: tt.nonResourceURL,
+				ResourceName:   tt.resourceName,
 			}
 
 			// when
