@@ -173,8 +173,8 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 		},
 	}
 
-	cmd.Flags().String("subresource", "", "SubResource such as pod/log or deployment/scale")
-	cmd.Flags().BoolP("all-namespaces", "A", false, "If true, check for users that can do the specified action in any of the available namespaces")
+	cmd.Flags().String(subResourceFlag, "", "SubResource such as pod/log or deployment/scale")
+	cmd.Flags().BoolP(allNamespacesFlag, "A", false, "If true, check for users that can do the specified action in any of the available namespaces")
 
 	flag.CommandLine.VisitAll(func(gf *flag.Flag) {
 		cmd.Flags().AddGoFlag(gf)
@@ -452,12 +452,10 @@ func PrintChecks(out io.Writer, action Action, roleBindings []rbac.RoleBinding, 
 	wr := new(tabwriter.Writer)
 	wr.Init(out, 0, 8, 2, ' ', 0)
 
-	actionStr := action.PrettyPrint()
-
 	if action.Resource != "" {
 		// NonResourceURL permissions can only be granted through ClusterRoles. Hence no point in printing RoleBindings section.
 		if len(roleBindings) == 0 {
-			_, _ = fmt.Fprintf(out, "No subjects found with permissions to %s assigned through RoleBindings\n", actionStr)
+			_, _ = fmt.Fprintf(out, "No subjects found with permissions to %s assigned through RoleBindings\n", action)
 		} else {
 			_, _ = fmt.Fprintln(wr, "ROLEBINDING\tNAMESPACE\tSUBJECT\tTYPE\tSA-NAMESPACE")
 			for _, rb := range roleBindings {
@@ -471,7 +469,7 @@ func PrintChecks(out io.Writer, action Action, roleBindings []rbac.RoleBinding, 
 	}
 
 	if len(clusterRoleBindings) == 0 {
-		_, _ = fmt.Fprintf(out, "No subjects found with permissions to %s assigned through ClusterRoleBindings\n", actionStr)
+		_, _ = fmt.Fprintf(out, "No subjects found with permissions to %s assigned through ClusterRoleBindings\n", action)
 	} else {
 		_, _ = fmt.Fprintln(wr, "CLUSTERROLEBINDING\tSUBJECT\tTYPE\tSA-NAMESPACE")
 		for _, rb := range clusterRoleBindings {
@@ -483,7 +481,7 @@ func PrintChecks(out io.Writer, action Action, roleBindings []rbac.RoleBinding, 
 	_ = wr.Flush()
 }
 
-func (w Action) PrettyPrint() string {
+func (w Action) String() string {
 	if w.NonResourceURL != "" {
 		return fmt.Sprintf("%s %s", w.Verb, w.NonResourceURL)
 	}
