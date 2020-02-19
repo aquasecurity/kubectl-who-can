@@ -11,7 +11,6 @@ import (
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	clioptions "k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes/fake"
 	clientTesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/clientcmd"
@@ -334,9 +333,7 @@ func TestWhoCan_CheckAPIAccess(t *testing.T) {
 			}
 
 			// given
-			configFlags := &clioptions.ConfigFlags{}
 			wc := WhoCan{
-				clientConfig:       configFlags.ToRawKubeConfigLoader(),
 				clientNamespace:    client.CoreV1().Namespaces(),
 				clientRBAC:         client.RbacV1(),
 				namespaceValidator: namespaceValidator,

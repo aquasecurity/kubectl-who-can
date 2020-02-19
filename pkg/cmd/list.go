@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientcore "k8s.io/client-go/kubernetes/typed/core/v1"
 	clientrbac "k8s.io/client-go/kubernetes/typed/rbac/v1"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"strings"
 	"text/tabwriter"
@@ -93,7 +94,6 @@ type roles map[string]struct{}
 type clusterRoles map[string]struct{}
 
 type WhoCan struct {
-	clientConfig    clientcmd.ClientConfig
 	clientNamespace clientcore.NamespaceInterface
 	clientRBAC      clientrbac.RbacV1Interface
 
@@ -103,20 +103,16 @@ type WhoCan struct {
 	policyRuleMatcher  PolicyRuleMatcher
 }
 
-// NewWhoCan constructs a new WhoCan checker with the specified ClientConfig and RESTMapper.
-func NewWhoCan(clientConfig clientcmd.ClientConfig, mapper apimeta.RESTMapper) (*WhoCan, error) {
-	config, err := clientConfig.ClientConfig()
+// NewWhoCan constructs a new WhoCan checker with the specified rest.Config and RESTMapper.
+func NewWhoCan(restConfig *rest.Config, mapper apimeta.RESTMapper) (*WhoCan, error) {
+	client, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return nil, err
 	}
-	client, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
+
 	clientNamespace := client.CoreV1().Namespaces()
 
 	return &WhoCan{
-		clientConfig:       clientConfig,
 		clientNamespace:    clientNamespace,
 		clientRBAC:         client.RbacV1(),
 		namespaceValidator: NewNamespaceValidator(clientNamespace),
@@ -137,6 +133,10 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientConfig := configFlags.ToRawKubeConfigLoader()
+			restConfig, err := clientConfig.ClientConfig()
+			if err != nil {
+				return fmt.Errorf("getting rest config: %v", err)
+			}
 
 			mapper, err := configFlags.ToRESTMapper()
 			if err != nil {
@@ -148,7 +148,7 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 				return err
 			}
 
-			o, err := NewWhoCan(clientConfig, mapper)
+			o, err := NewWhoCan(restConfig, mapper)
 			if err != nil {
 				return err
 			}
