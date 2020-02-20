@@ -143,6 +143,9 @@ func (rv *resourceResolver) isVerbSupportedBy(verb string, resource apismeta.API
 	if verb == rbac.VerbAll {
 		return true
 	}
+	if resource.Name == "podsecuritypolicies" && verb == "use" {
+		return true
+	}
 	supported := false
 	for _, v := range resource.Verbs {
 		if v == verb {
