@@ -143,9 +143,19 @@ func (rv *resourceResolver) isVerbSupportedBy(verb string, resource apismeta.API
 	if verb == rbac.VerbAll {
 		return true
 	}
+
+	// specialized verbs for additional permissions
+	// https://kubernetes.io/docs/reference/access-authn-authz/authorization/#determine-the-request-verb
 	if resource.Name == "podsecuritypolicies" && verb == "use" {
 		return true
 	}
+	if (resource.Name == "clusterroles" || resource.Name == "roles") && (verb == "bind" || verb == "escalate") {
+		return true
+	}
+	if (resource.Name == "users" || resource.Name == "groups" || resource.Name == "serviceaccounts" || resource.Name == "userextras") && verb == "impersonate" {
+		return true
+	}
+
 	supported := false
 	for _, v := range resource.Verbs {
 		if v == verb {
