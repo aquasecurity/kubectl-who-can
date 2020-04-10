@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"io"
@@ -19,6 +18,7 @@ import (
 	clientrbac "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog"
 	"strings"
 	"text/tabwriter"
 )
@@ -195,13 +195,13 @@ func ActionFrom(clientConfig clientcmd.ClientConfig, flags *pflag.FlagSet, args 
 	action.Verb = args[0]
 	if strings.HasPrefix(args[1], "/") {
 		action.NonResourceURL = args[1]
-		glog.V(3).Infof("Resolved nonResourceURL `%s`", action.NonResourceURL)
+		klog.V(3).Infof("Resolved nonResourceURL `%s`", action.NonResourceURL)
 	} else {
 		resourceTokens := strings.SplitN(args[1], "/", 2)
 		action.Resource = resourceTokens[0]
 		if len(resourceTokens) > 1 {
 			action.ResourceName = resourceTokens[1]
-			glog.V(3).Infof("Resolved resourceName `%s`", action.ResourceName)
+			klog.V(3).Infof("Resolved resourceName `%s`", action.ResourceName)
 		}
 	}
 
@@ -217,7 +217,7 @@ func ActionFrom(clientConfig clientcmd.ClientConfig, flags *pflag.FlagSet, args 
 
 	if action.AllNamespaces {
 		action.Namespace = core.NamespaceAll
-		glog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", action.Namespace)
+		klog.V(3).Infof("Resolved namespace `%s` from --all-namespaces flag", action.Namespace)
 		return
 	}
 
@@ -227,7 +227,7 @@ func ActionFrom(clientConfig clientcmd.ClientConfig, flags *pflag.FlagSet, args 
 	}
 
 	if action.Namespace != "" {
-		glog.V(3).Infof("Resolved namespace `%s` from --namespace flag", action.Namespace)
+		klog.V(3).Infof("Resolved namespace `%s` from --namespace flag", action.Namespace)
 		return
 	}
 
@@ -236,7 +236,7 @@ func ActionFrom(clientConfig clientcmd.ClientConfig, flags *pflag.FlagSet, args 
 	if err != nil {
 		err = fmt.Errorf("getting namespace from current context: %v", err)
 	}
-	glog.V(3).Infof("Resolved namespace `%s` from current context", action.Namespace)
+	klog.V(3).Infof("Resolved namespace `%s` from current context", action.Namespace)
 	return
 }
 
@@ -271,7 +271,7 @@ func (w *WhoCan) Check(action Action) (roleBindings []rbac.RoleBinding, clusterR
 			err = fmt.Errorf("resolving resource: %v", err)
 			return
 		}
-		glog.V(3).Infof("Resolved resource `%s`", resolvedAction.gr.String())
+		klog.V(3).Infof("Resolved resource `%s`", resolvedAction.gr.String())
 	}
 
 	// Get the Roles that relate to the Verbs and Resources we are interested in

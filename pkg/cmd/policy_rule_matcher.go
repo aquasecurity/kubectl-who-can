@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/golang/glog"
 	rbac "k8s.io/api/rbac/v1"
+	"k8s.io/klog"
 )
 
 // PolicyRuleMatcher wraps the Matches* methods.
@@ -28,10 +28,10 @@ func (m *matcher) MatchesRole(role rbac.Role, action resolvedAction) bool {
 		if !m.matches(rule, action) {
 			continue
 		}
-		glog.V(4).Infof("Role [%s] matches action filter? YES", role.Name)
+		klog.V(4).Infof("Role [%s] matches action filter? YES", role.Name)
 		return true
 	}
-	glog.V(4).Infof("Role [%s] matches action filter? NO", role.Name)
+	klog.V(4).Infof("Role [%s] matches action filter? NO", role.Name)
 	return false
 }
 
@@ -41,10 +41,10 @@ func (m *matcher) MatchesClusterRole(role rbac.ClusterRole, action resolvedActio
 			continue
 		}
 
-		glog.V(4).Infof("ClusterRole [%s] matches action filter? YES", role.Name)
+		klog.V(4).Infof("ClusterRole [%s] matches action filter? YES", role.Name)
 		return true
 	}
-	glog.V(4).Infof("ClusterRole [%s] matches action filter? NO", role.Name)
+	klog.V(4).Infof("ClusterRole [%s] matches action filter? NO", role.Name)
 	return false
 }
 
