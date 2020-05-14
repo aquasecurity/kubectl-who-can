@@ -87,6 +87,8 @@ For additional details on flags and usage, run `kubectl who-can --help`.
 
 This repository is available under the [Apache License 2.0](https://github.com/aquasecurity/kubectl-who-can/blob/master/LICENSE).
 
+## Contributing
+
 [release-img]: https://img.shields.io/github/release/aquasecurity/kubectl-who-can.svg
 [release]: https://github.com/aquasecurity/kubectl-who-can/releases
 
