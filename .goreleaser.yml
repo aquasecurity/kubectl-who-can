@@ -32,7 +32,5 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
-      - '^refactor:'
+      - '^docs'
+      - '^test'

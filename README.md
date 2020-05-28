@@ -1,5 +1,5 @@
-[![GitHub release][release-img]][release]
-[![Build Status][ci-img]][ci]
+[![GitHub Release][release-img]][release]
+[![GitHub Action][build-action-img]][build-action]
 [![Coverage Status][cov-img]][cov]
 [![Go Report Card][report-card-img]][report-card]
 [![License][license-img]][license]
@@ -27,7 +27,7 @@ The plugin will be available as `kubectl who-can`.
 
 ### Manual
 
-Download a [release distribution archive](https://github.com/aquasecurity/kubectl-who-can/releases) for your operating system, extract it, and add the `kubectl-who-can`
+Download a [release distribution archive][release] for your operating system, extract it, and add the `kubectl-who-can`
 executable to your `$PATH`. For example, to manually install `kubectl-who-can` on macOS run the following command:
 
 ```
@@ -90,8 +90,8 @@ This repository is available under the [Apache License 2.0](https://github.com/a
 [release-img]: https://img.shields.io/github/release/aquasecurity/kubectl-who-can.svg
 [release]: https://github.com/aquasecurity/kubectl-who-can/releases
 
-[ci-img]: https://travis-ci.org/aquasecurity/kubectl-who-can.svg?branch=master
-[ci]: https://travis-ci.org/aquasecurity/kubectl-who-can
+[build-action-img]: https://github.com/aquasecurity/kubectl-who-can/workflows/build/badge.svg
+[build-action]: https://github.com/aquasecurity/kubectl-who-can/actions
 
 [cov-img]: https://codecov.io/github/aquasecurity/kubectl-who-can/branch/master/graph/badge.svg
 [cov]: https://codecov.io/github/aquasecurity/kubectl-who-can
