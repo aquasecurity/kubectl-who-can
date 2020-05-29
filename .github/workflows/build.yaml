@@ -16,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Run unit tests
-        run: make test
+        run: make tests
       - name: Run integration tests
         run: make integration-tests
       - name: Upload code coverage
