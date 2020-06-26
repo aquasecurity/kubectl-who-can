@@ -34,3 +34,4 @@ changelog:
     exclude:
       - '^docs'
       - '^test'
+      - '^release'
