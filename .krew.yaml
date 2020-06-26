@@ -60,4 +60,5 @@ spec:
           to: .
         - from: LICENSE
           to: .
-      bin: kubectl-who-can.exe            
+      bin: kubectl-who-can.exe
+
