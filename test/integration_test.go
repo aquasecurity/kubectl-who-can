@@ -24,6 +24,8 @@ import (
 var (
 	// commonLabels is a set of common labels added to each object created by this integration test, which allows us
 	// to do a proper cleanup and distinguish them from the default object created on cluster init.
+	//
+	// kubectl delete ns,crd,role,rolebinding,clusterrole,clusterrolebindings -l app.kubernetes.io/name=who-can
 	commonLabels = labels.Set{
 		"app.kubernetes.io/name": "who-can",
 	}
@@ -308,7 +310,7 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 		},
 		Rules: []rbac.PolicyRule{
 			{
-				APIGroups: []string{"apps"}, // TODO For old clusters it extensions / never are apps
+				APIGroups: []string{"apps"}, // TODO For old clusters it's extensions, newer are apps
 				Verbs:     []string{"update"},
 				Resources: []string{"deployments/scale"},
 			},
