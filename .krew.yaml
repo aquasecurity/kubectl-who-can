@@ -1,0 +1,63 @@
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: who-can
+spec:
+  version: "{{ .TagName }}"
+  homepage: https://github.com/aquasecurity/kubectl-who-can
+  shortDescription: >-
+    Shows who has RBAC permissions to access Kubernetes resources
+  description: |+2
+    Shows which subjects have RBAC permissions to VERB [TYPE | TYPE/NAME | NONRESOURCEURL]
+
+    VERB is a logical Kubernetes API verb like 'get', 'list', 'watch', 'delete', etc.
+    TYPE is a Kubernetes resource. Shortcuts and API groups will be resolved, e.g. 'po' or 'pod.metrics.k8s.io'.
+    NAME is the name of a particular Kubernetes resource.
+    NONRESOURCEURL is a partial URL that starts with "/".
+
+    For example, if you want to find all subjects who have permission to
+    delete pods in a particular namespace, or to delete nodes in the cluster
+    (dangerous!) you could run the following commands:
+
+    $ kubectl who-can delete pods --namespace foo
+    $ kubectl who-can delete nodes
+
+    For usage or examples, run:
+
+    $ kubectl who-can -h
+  caveats: |
+    The plugin requires the rights to list (Cluster)Role and (Cluster)RoleBindings.
+  platforms:
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: amd64
+      {{addURIAndSha "https://github.com/aquasecurity/kubectl-who-can/releases/download/{{ .TagName }}/kubectl-who-can_darwin_x86_64.tar.gz" .TagName | indent 6}}
+      files:
+        - from: kubectl-who-can
+          to: .
+        - from: LICENSE
+          to: .
+      bin: kubectl-who-can
+    - selector:
+        matchLabels:
+          os: linux
+          arch: amd64
+      {{addURIAndSha "https://github.com/aquasecurity/kubectl-who-can/releases/download/{{ .TagName }}/kubectl-who-can_linux_x86_64.tar.gz" .TagName | indent 6}}
+      files:
+        - from: kubectl-who-can
+          to: .
+        - from: LICENSE
+          to: .
+      bin: kubectl-who-can
+    - selector:
+        matchLabels:
+          os: windows
+          arch: amd64
+      {{addURIAndSha "https://github.com/aquasecurity/kubectl-who-can/releases/download/{{ .TagName }}/kubectl-who-can_windows_x86_64.zip" .TagName | indent 6}}
+      files:
+        - from: kubectl-who-can.exe
+          to: .
+        - from: LICENSE
+          to: .
+      bin: kubectl-who-can.exe            
