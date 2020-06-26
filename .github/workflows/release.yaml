@@ -25,6 +25,8 @@ jobs:
           kubectl cluster-info
       - name: Run integration tests
         run: make integration-tests
+        env:
+          KUBECONFIG: /home/runner/.kube/config
       - name: Release
         uses: goreleaser/goreleaser-action@v2
         with:
