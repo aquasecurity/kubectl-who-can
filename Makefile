@@ -11,3 +11,8 @@ unit-tests: $(SOURCES)
 
 integration-tests: $(SOURCES)
 	GO111MODULE=on go test -v test/integration_test.go
+
+.PHONY: clean
+clean:
+	rm $(BINARY)
+	rm coverage.txt
