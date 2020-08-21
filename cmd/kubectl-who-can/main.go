@@ -33,7 +33,7 @@ func main() {
 	initFlags()
 	root, err := cmd.NewWhoCanCommand(clioptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr})
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	if err := root.Execute(); err != nil {
