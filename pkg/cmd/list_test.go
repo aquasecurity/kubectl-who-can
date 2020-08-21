@@ -1,8 +1,9 @@
 package cmd
 
 import (
-	"bytes"
 	"errors"
+	"testing"
+
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -14,7 +15,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	clientTesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/clientcmd"
-	"testing"
 
 	rbac "k8s.io/api/rbac/v1"
 )
@@ -577,129 +577,4 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(bindings))
 	assert.Contains(t, bindings, getHealthzBnd)
-}
-
-func TestPrintWarnings(t *testing.T) {
-
-	data := []struct {
-		scenario       string
-		warnings       []string
-		expectedOutput string
-	}{
-		{
-			scenario:       "A",
-			warnings:       []string{"w1", "w2"},
-			expectedOutput: "Warning: The list might not be complete due to missing permission(s):\n\tw1\n\tw2\n\n",
-		},
-		{
-			scenario:       "B",
-			warnings:       []string{},
-			expectedOutput: "",
-		},
-		{
-			scenario:       "C",
-			warnings:       nil,
-			expectedOutput: "",
-		},
-	}
-
-	for _, tt := range data {
-		t.Run(tt.scenario, func(t *testing.T) {
-			var buf bytes.Buffer
-			PrintWarnings(&buf, tt.warnings)
-			assert.Equal(t, tt.expectedOutput, buf.String())
-		})
-	}
-}
-
-func TestPrintChecks(t *testing.T) {
-	data := []struct {
-		scenario string
-
-		verb           string
-		resource       string
-		nonResourceURL string
-		resourceName   string
-
-		roleBindings        []rbac.RoleBinding
-		clusterRoleBindings []rbac.ClusterRoleBinding
-
-		output string
-	}{
-		{
-			scenario: "A",
-			verb:     "get", resource: "pods", resourceName: "",
-			output: `No subjects found with permissions to get pods assigned through RoleBindings
-
-No subjects found with permissions to get pods assigned through ClusterRoleBindings
-`,
-		},
-		{
-			scenario: "B",
-			verb:     "get", resource: "pods", resourceName: "my-pod",
-			output: `No subjects found with permissions to get pods/my-pod assigned through RoleBindings
-
-No subjects found with permissions to get pods/my-pod assigned through ClusterRoleBindings
-`,
-		},
-		{
-			scenario: "C",
-			verb:     "get", nonResourceURL: "/healthz",
-			output: "No subjects found with permissions to get /healthz assigned through ClusterRoleBindings\n",
-		},
-		{
-			scenario: "D",
-			verb:     "get", resource: "pods",
-			roleBindings: []rbac.RoleBinding{
-				{
-					ObjectMeta: meta.ObjectMeta{Name: "Alice-can-view-pods", Namespace: "default"},
-					Subjects: []rbac.Subject{
-						{Name: "Alice", Kind: "User"},
-					}},
-				{
-					ObjectMeta: meta.ObjectMeta{Name: "Admins-can-view-pods", Namespace: "bar"},
-					Subjects: []rbac.Subject{
-						{Name: "Admins", Kind: "Group"},
-					}},
-			},
-			clusterRoleBindings: []rbac.ClusterRoleBinding{
-				{
-					ObjectMeta: meta.ObjectMeta{Name: "Bob-and-Eve-can-view-pods", Namespace: "default"},
-					Subjects: []rbac.Subject{
-						{Name: "Bob", Kind: "ServiceAccount", Namespace: "foo"},
-						{Name: "Eve", Kind: "User"},
-					},
-				},
-			},
-			output: `ROLEBINDING           NAMESPACE  SUBJECT  TYPE   SA-NAMESPACE
-Alice-can-view-pods   default    Alice    User   
-Admins-can-view-pods  bar        Admins   Group  
-
-CLUSTERROLEBINDING         SUBJECT  TYPE            SA-NAMESPACE
-Bob-and-Eve-can-view-pods  Bob      ServiceAccount  foo
-Bob-and-Eve-can-view-pods  Eve      User            
-`,
-		},
-	}
-
-	for _, tt := range data {
-		t.Run(tt.scenario, func(t *testing.T) {
-			// given
-			var buf bytes.Buffer
-			action := Action{
-				Verb:           tt.verb,
-				Resource:       tt.resource,
-				NonResourceURL: tt.nonResourceURL,
-				ResourceName:   tt.resourceName,
-			}
-
-			// when
-			PrintChecks(&buf, action, tt.roleBindings, tt.clusterRoleBindings)
-
-			// then
-			assert.Equal(t, tt.output, buf.String())
-		})
-
-	}
-
 }

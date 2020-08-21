@@ -3,6 +3,7 @@
 [![Coverage Status][cov-img]][cov]
 [![Go Report Card][report-card-img]][report-card]
 [![License][license-img]][license]
+[![GitHub All Releases][github-all-releases-img]][release]
 
 # kubectl-who-can
 
@@ -87,7 +88,7 @@ For additional details on flags and usage, run `kubectl who-can --help`.
 
 This repository is available under the [Apache License 2.0](https://github.com/aquasecurity/kubectl-who-can/blob/master/LICENSE).
 
-[release-img]: https://img.shields.io/github/release/aquasecurity/kubectl-who-can.svg
+[release-img]: https://img.shields.io/github/release/aquasecurity/kubectl-who-can.svg?logo=github
 [release]: https://github.com/aquasecurity/kubectl-who-can/releases
 
 [build-action-img]: https://github.com/aquasecurity/kubectl-who-can/workflows/build/badge.svg
@@ -101,7 +102,7 @@ This repository is available under the [Apache License 2.0](https://github.com/a
 
 [license-img]: https://img.shields.io/github/license/aquasecurity/kubectl-who-can.svg
 [license]: https://github.com/aquasecurity/kubectl-who-can/blob/master/LICENSE
+[github-all-releases-img]: https://img.shields.io/github/downloads/aquasecurity/kubectl-who-can/total?logo=github
 
 [asciicast-img]: https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j.svg
 [asciicast]: https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j
-

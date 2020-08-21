@@ -4,9 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"strings"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"io"
 	core "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -19,8 +20,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
-	"strings"
-	"text/tabwriter"
 )
 
 const (
@@ -57,15 +56,21 @@ NONRESOURCEURL is a partial URL that starts with "/".`
 
   # List who can access the URL /logs/
   kubectl who-can get /logs`
+)
 
+const (
 	// RoleKind is the RoleRef's Kind referencing a Role.
 	RoleKind = "Role"
 	// ClusterRoleKind is the RoleRef's Kind referencing a ClusterRole.
 	ClusterRoleKind = "ClusterRole"
+)
 
+const (
 	subResourceFlag   = "subresource"
 	allNamespacesFlag = "all-namespaces"
 	namespaceFlag     = "namespace"
+	outputFlag        = "output"
+	outputWide        = "wide"
 )
 
 // Action represents an action a subject can be given permission to.
@@ -158,8 +163,15 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 				return err
 			}
 
+			output, err := cmd.Flags().GetString(outputFlag)
+			if err != nil {
+				return err
+			}
+
+			printer := NewPrinter(streams.Out, output == outputWide)
+
 			// Output warnings
-			PrintWarnings(streams.Out, warnings)
+			printer.PrintWarnings(warnings)
 
 			roleBindings, clusterRoleBindings, err := o.Check(action)
 			if err != nil {
@@ -167,7 +179,7 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 			}
 
 			// Output check results
-			PrintChecks(streams.Out, action, roleBindings, clusterRoleBindings)
+			printer.PrintChecks(action, roleBindings, clusterRoleBindings)
 
 			return nil
 		},
@@ -175,6 +187,7 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 
 	cmd.Flags().String(subResourceFlag, "", "SubResource such as pod/log or deployment/scale")
 	cmd.Flags().BoolP(allNamespacesFlag, "A", false, "If true, check for users that can do the specified action in any of the available namespaces")
+	cmd.Flags().StringP(outputFlag, "o", "", "Output format. Currently the only supported output format is wide.")
 
 	flag.CommandLine.VisitAll(func(gf *flag.Flag) {
 		cmd.Flags().AddGoFlag(gf)
@@ -434,51 +447,6 @@ func (w *WhoCan) getClusterRoleBindings(clusterRoleNames clusterRoles) (clusterR
 	}
 
 	return
-}
-
-// PrintWarnings prints warnings, if any, returned by CheckAPIAccess.
-func PrintWarnings(out io.Writer, warnings []string) {
-	if len(warnings) > 0 {
-		_, _ = fmt.Fprintln(out, "Warning: The list might not be complete due to missing permission(s):")
-		for _, warning := range warnings {
-			_, _ = fmt.Fprintf(out, "\t%s\n", warning)
-		}
-		_, _ = fmt.Fprintln(out)
-	}
-}
-
-// PrintChecks prints permission checks returned by Check()
-func PrintChecks(out io.Writer, action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
-	wr := new(tabwriter.Writer)
-	wr.Init(out, 0, 8, 2, ' ', 0)
-
-	if action.Resource != "" {
-		// NonResourceURL permissions can only be granted through ClusterRoles. Hence no point in printing RoleBindings section.
-		if len(roleBindings) == 0 {
-			_, _ = fmt.Fprintf(out, "No subjects found with permissions to %s assigned through RoleBindings\n", action)
-		} else {
-			_, _ = fmt.Fprintln(wr, "ROLEBINDING\tNAMESPACE\tSUBJECT\tTYPE\tSA-NAMESPACE")
-			for _, rb := range roleBindings {
-				for _, s := range rb.Subjects {
-					_, _ = fmt.Fprintf(wr, "%s\t%s\t%s\t%s\t%s\n", rb.Name, rb.GetNamespace(), s.Name, s.Kind, s.Namespace)
-				}
-			}
-		}
-
-		_, _ = fmt.Fprintln(wr)
-	}
-
-	if len(clusterRoleBindings) == 0 {
-		_, _ = fmt.Fprintf(out, "No subjects found with permissions to %s assigned through ClusterRoleBindings\n", action)
-	} else {
-		_, _ = fmt.Fprintln(wr, "CLUSTERROLEBINDING\tSUBJECT\tTYPE\tSA-NAMESPACE")
-		for _, rb := range clusterRoleBindings {
-			for _, s := range rb.Subjects {
-				_, _ = fmt.Fprintf(wr, "%s\t%s\t%s\t%s\n", rb.Name, s.Name, s.Kind, s.Namespace)
-			}
-		}
-	}
-	_ = wr.Flush()
 }
 
 func (w Action) String() string {
