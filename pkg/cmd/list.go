@@ -163,14 +163,11 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 				return err
 			}
 
-			wide := false
 			output, err := cmd.Flags().GetString(outputFlag)
 			if err != nil {
 				return err
 			}
-			if output == outputWide {
-				wide = true
-			}
+			wide := (output == outputWide)
 
 			printer := NewPrinter(streams.Out, wide)
 
