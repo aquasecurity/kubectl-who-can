@@ -167,9 +167,8 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 			if err != nil {
 				return err
 			}
-			wide := (output == outputWide)
 
-			printer := NewPrinter(streams.Out, wide)
+			printer := NewPrinter(streams.Out, output == outputWide)
 
 			// Output warnings
 			printer.PrintWarnings(warnings)
