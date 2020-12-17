@@ -84,24 +84,20 @@ subresource      |           |         | Specify a sub-resource such as pod/log 
 
 For additional details on flags and usage, run `kubectl who-can --help`.
 
-## License
-
-This repository is available under the [Apache License 2.0](https://github.com/aquasecurity/kubectl-who-can/blob/master/LICENSE).
-
 [release-img]: https://img.shields.io/github/release/aquasecurity/kubectl-who-can.svg?logo=github
 [release]: https://github.com/aquasecurity/kubectl-who-can/releases
 
 [build-action-img]: https://github.com/aquasecurity/kubectl-who-can/workflows/build/badge.svg
 [build-action]: https://github.com/aquasecurity/kubectl-who-can/actions
 
-[cov-img]: https://codecov.io/github/aquasecurity/kubectl-who-can/branch/master/graph/badge.svg
+[cov-img]: https://codecov.io/github/aquasecurity/kubectl-who-can/branch/main/graph/badge.svg
 [cov]: https://codecov.io/github/aquasecurity/kubectl-who-can
 
 [report-card-img]: https://goreportcard.com/badge/github.com/aquasecurity/kubectl-who-can
 [report-card]: https://goreportcard.com/report/github.com/aquasecurity/kubectl-who-can
 
 [license-img]: https://img.shields.io/github/license/aquasecurity/kubectl-who-can.svg
-[license]: https://github.com/aquasecurity/kubectl-who-can/blob/master/LICENSE
+[license]: https://github.com/aquasecurity/kubectl-who-can/blob/main/LICENSE
 [github-all-releases-img]: https://img.shields.io/github/downloads/aquasecurity/kubectl-who-can/total?logo=github
 
 [asciicast-img]: https://asciinema.org/a/ccqqYwA5L5rMV9kd1tgzyZJ2j.svg

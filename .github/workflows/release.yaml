@@ -19,7 +19,7 @@ jobs:
       - name: Run unit tests
         run: make unit-tests
       - name: Setup Kubernetes cluster (KIND)
-        uses: engineerd/setup-kind@v0.4.0
+        uses: engineerd/setup-kind@v0.5.0
       - name: Test connection to Kubernetes cluster
         run: |
           kubectl cluster-info
@@ -30,7 +30,7 @@ jobs:
       - name: Release
         uses: goreleaser/goreleaser-action@v2
         with:
-          version: v0.138.0
+          version: v0.148.0
           args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
