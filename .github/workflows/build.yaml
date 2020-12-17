@@ -2,7 +2,7 @@ name: build
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
 jobs:
   build:
@@ -20,10 +20,9 @@ jobs:
       - name: Upload code coverage
         uses: codecov/codecov-action@v1
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.txt
       - name: Setup Kubernetes cluster (KIND)
-        uses: engineerd/setup-kind@v0.4.0
+        uses: engineerd/setup-kind@v0.5.0
       - name: Test connection to Kubernetes cluster
         run: |
           kubectl cluster-info
@@ -34,5 +33,5 @@ jobs:
       - name: Release snapshot
         uses: goreleaser/goreleaser-action@v2
         with:
-          version: v0.138.0
+          version: v0.148.0
           args: release --snapshot --skip-publish --rm-dist
