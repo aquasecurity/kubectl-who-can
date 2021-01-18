@@ -71,6 +71,8 @@ const (
 	namespaceFlag     = "namespace"
 	outputFlag        = "output"
 	outputWide        = "wide"
+	exportFlag        = "export"
+	exportType        = "JSON"
 )
 
 // Action represents an action a subject can be given permission to.
@@ -168,6 +170,11 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 				return err
 			}
 
+			export, err := cmd.Flags().GetString(exportFlag)
+			if err != nil {
+				return err
+			}
+
 			printer := NewPrinter(streams.Out, output == outputWide)
 
 			// Output warnings
@@ -179,7 +186,12 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 			}
 
 			// Output check results
-			printer.PrintChecks(action, roleBindings, clusterRoleBindings)
+			toExport := export == exportType
+			if toExport {
+				ExportChecks(action, roleBindings, clusterRoleBindings)
+			} else {
+				printer.PrintChecks(action, roleBindings, clusterRoleBindings)
+			}
 
 			return nil
 		},
@@ -188,6 +200,7 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 	cmd.Flags().String(subResourceFlag, "", "SubResource such as pod/log or deployment/scale")
 	cmd.Flags().BoolP(allNamespacesFlag, "A", false, "If true, check for users that can do the specified action in any of the available namespaces")
 	cmd.Flags().StringP(outputFlag, "o", "", "Output format. Currently the only supported output format is wide.")
+	cmd.Flags().StringP(exportFlag, "e", "", "Export format. Currently the only supported output format is JSON.")
 
 	flag.CommandLine.VisitAll(func(gf *flag.Flag) {
 		cmd.Flags().AddGoFlag(gf)
