@@ -188,7 +188,7 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 			// Output check results
 			toExport := export == exportType
 			if toExport {
-				ExportChecks(action, roleBindings, clusterRoleBindings)
+				ExportData(action, roleBindings, clusterRoleBindings)
 			} else {
 				printer.PrintChecks(action, roleBindings, clusterRoleBindings)
 			}

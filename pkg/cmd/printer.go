@@ -27,14 +27,15 @@ func NewPrinter(out io.Writer, wide bool) *Printer {
 	}
 }
 
+// Struct to hold either rb or crb objects
 type rowData struct {
 	Name     string         `json:"name"`
 	RoleRef  rbac.RoleRef   `json:"roleRef" protobuf:"bytes,3,opt,name=roleRef"`
 	Subjects []rbac.Subject `json:"subjects,omitempty" protobuf:"bytes,2,rep,name=subjects"`
 }
 
-// PrintChecks prints permission checks returned by Check.
-func ExportChecks(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
+// ExportData exports data to a file.
+func ExportData(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
 	// Final data to be exported as JSON
 	data := make(map[string]interface{}, 0)
 
