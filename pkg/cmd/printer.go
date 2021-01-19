@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
-	"os"
 	"strings"
 	"text/tabwriter"
 
@@ -35,7 +33,7 @@ type rowData struct {
 }
 
 // ExportData exports data to a file.
-func ExportData(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
+func (p *Printer) ExportData(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
 	// Final data to be exported as JSON
 	data := make(map[string]interface{}, 0)
 
@@ -60,20 +58,9 @@ func ExportData(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindi
 		data["clusterRoleBindings"] = crbData
 	}
 
-	// File to export JSON data
-	filename := "output.json"
-	os.Remove(filename)
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer file.Close()
-
-	// Write data into file
-	encoder := json.NewEncoder(file)
+	// Write data into output stream
+	encoder := json.NewEncoder(p.out)
 	encoder.Encode(data)
-
 }
 
 func (p *Printer) PrintChecks(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {

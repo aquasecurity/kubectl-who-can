@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -73,6 +74,7 @@ const (
 	outputWide        = "wide"
 	exportFlag        = "export"
 	exportType        = "JSON"
+	fileFlag          = "filename"
 )
 
 // Action represents an action a subject can be given permission to.
@@ -177,6 +179,20 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 
 			printer := NewPrinter(streams.Out, output == outputWide)
 
+			// Set output to either file or STDOUT
+			filename, err := cmd.Flags().GetString(fileFlag)
+			if filename != "" {
+				os.Remove(filename)
+
+				file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+				if err != nil {
+					return err
+				}
+
+				defer file.Close()
+				printer.out = file
+			}
+
 			// Output warnings
 			printer.PrintWarnings(warnings)
 
@@ -188,7 +204,7 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 			// Output check results
 			toExport := export == exportType
 			if toExport {
-				ExportData(action, roleBindings, clusterRoleBindings)
+				printer.ExportData(action, roleBindings, clusterRoleBindings)
 			} else {
 				printer.PrintChecks(action, roleBindings, clusterRoleBindings)
 			}
@@ -201,6 +217,7 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 	cmd.Flags().BoolP(allNamespacesFlag, "A", false, "If true, check for users that can do the specified action in any of the available namespaces")
 	cmd.Flags().StringP(outputFlag, "o", "", "Output format. Currently the only supported output format is wide.")
 	cmd.Flags().StringP(exportFlag, "e", "", "Export format. Currently the only supported output format is JSON.")
+	cmd.Flags().StringP(fileFlag, "f", "", "Name of file to export to, will be overwritten if existing.")
 
 	flag.CommandLine.VisitAll(func(gf *flag.Flag) {
 		cmd.Flags().AddGoFlag(gf)
