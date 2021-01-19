@@ -158,16 +158,18 @@ func TestActionFrom(t *testing.T) {
 			expectedError: errors.New("you must specify two or three arguments: verb, resource, and optional resourceName"),
 		},
 		{
-			name:          "H",
-			flags:         flags{file: ""},
-			args:          []string{},
-			expectedError: errors.New("flag needs an argument: 'f' in -f"),
+			name:           "H",
+			currentContext: &currentContext{namespace: "foo"},
+			flags:          flags{namespace: "", allNamespaces: false, file: ""},
+			args:           []string{"list", "pods", ""},
+			expectedError:  errors.New("flag needs an argument: 'f' in -f"),
 		},
 		{
-			name:          "I",
-			flags:         flags{export: ""},
-			args:          []string{},
-			expectedError: errors.New("flag needs an argument: 'e' in -e"),
+			name:           "I",
+			currentContext: &currentContext{namespace: "foo"},
+			flags:          flags{namespace: "", allNamespaces: false, file: "", export: ""},
+			args:           []string{"list", "pods", ""},
+			expectedError:  errors.New("flag needs an argument: 'e' in -e"),
 		},
 	}
 
