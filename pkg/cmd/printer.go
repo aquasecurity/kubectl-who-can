@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"strings"
 	"text/tabwriter"
 
@@ -66,10 +65,7 @@ func (p *Printer) ExportData(action Action, roleBindings []rbac.RoleBinding, clu
 	encoder.SetIndent("", "    ")
 
 	// Write data
-	err := encoder.Encode(data)
-	if err != nil {
-		log.Fatal(err)
-	}
+	encoder.Encode(data)
 }
 
 func (p *Printer) PrintChecks(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
