@@ -81,8 +81,6 @@ func TestActionFrom(t *testing.T) {
 		subResource   string
 		namespace     string
 		allNamespaces bool
-		file          string
-		export        string
 	}
 
 	testCases := []struct {

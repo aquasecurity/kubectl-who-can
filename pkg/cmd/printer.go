@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"text/tabwriter"
 
@@ -35,7 +36,7 @@ type rowData struct {
 // ExportData exports data to a file.
 func (p *Printer) ExportData(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
 	// Final data to be exported as JSON
-	data := make(map[string]interface{}, 0)
+	data := make(map[string]interface{})
 
 	if action.Resource != "" {
 		// NonResourceURL permissions can only be granted through ClusterRoles. Hence no point in printing RoleBindings section.
@@ -58,9 +59,17 @@ func (p *Printer) ExportData(action Action, roleBindings []rbac.RoleBinding, clu
 		data["clusterRoleBindings"] = crbData
 	}
 
-	// Write data into output stream
+	// get encoder to write data into output stream
 	encoder := json.NewEncoder(p.out)
-	encoder.Encode(data)
+
+	// Set json indentation to 4 spaces
+	encoder.SetIndent("", "    ")
+
+	// Write data
+	err := encoder.Encode(data)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (p *Printer) PrintChecks(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
