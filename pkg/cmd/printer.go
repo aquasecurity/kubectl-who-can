@@ -65,7 +65,7 @@ func (p *Printer) ExportData(action Action, roleBindings []rbac.RoleBinding, clu
 	encoder.SetIndent("", "    ")
 
 	// Write data
-	encoder.Encode(data)
+	_ = encoder.Encode(data)
 }
 
 func (p *Printer) PrintChecks(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {

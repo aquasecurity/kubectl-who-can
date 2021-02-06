@@ -183,8 +183,10 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 			output = strings.ToLower(output)
 			if output == outputJson {
 				printer.ExportData(action, roleBindings, clusterRoleBindings)
-			} else {
+			} else if output == outputWide {
 				printer.PrintChecks(action, roleBindings, clusterRoleBindings)
+			} else {
+				return fmt.Errorf("Invalid output format: %v", output)
 			}
 
 			return nil
