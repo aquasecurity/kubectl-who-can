@@ -279,6 +279,23 @@ func TestPrinter_ExportData(t *testing.T) {
 			wide:   true,
 			output: "{\n    \"clusterRoleBindings\": [\n        {\n            \"name\": \"Bob-and-Eve-can-view-pods\",\n            \"roleRef\": {\n                \"apiGroup\": \"\",\n                \"kind\": \"ClusterRole\",\n                \"name\": \"view\"\n            },\n            \"subjects\": [\n                {\n                    \"kind\": \"ServiceAccount\",\n                    \"name\": \"Bob\",\n                    \"namespace\": \"foo\"\n                },\n                {\n                    \"kind\": \"User\",\n                    \"name\": \"Eve\"\n                }\n            ]\n        }\n    ],\n    \"roleBindings\": [\n        {\n            \"name\": \"Alice-can-view-pods\",\n            \"roleRef\": {\n                \"apiGroup\": \"\",\n                \"kind\": \"Role\",\n                \"name\": \"view-pods\"\n            },\n            \"subjects\": [\n                {\n                    \"kind\": \"User\",\n                    \"name\": \"Alice\"\n                }\n            ]\n        },\n        {\n            \"name\": \"Admins-can-view-pods\",\n            \"roleRef\": {\n                \"apiGroup\": \"\",\n                \"kind\": \"ClusterRole\",\n                \"name\": \"view\"\n            },\n            \"subjects\": [\n                {\n                    \"kind\": \"Group\",\n                    \"name\": \"Admins\"\n                }\n            ]\n        }\n    ]\n}\n",
 		},
+		{
+					scenario: "F",
+					verb:     "get", resource: "pods",
+					roleBindings: []rbac.RoleBinding{
+						{
+							ObjectMeta: meta.ObjectMeta{Name: "Alice-can-view-pods", Namespace: "default"},
+							Subjects:   []rbac.Subject{},
+						},
+					},
+					clusterRoleBindings: []rbac.ClusterRoleBinding{
+						{
+							ObjectMeta: meta.ObjectMeta{Name: "Bob-and-Eve-can-view-pods", Namespace: "default"},
+							Subjects:   []rbac.Subject{},
+						},
+					},
+					output: "{\n    \"clusterRoleBindings\": [],\n    \"roleBindings\": []\n}\n",
+				},
 	}
 
 	for _, tt := range testCases {
