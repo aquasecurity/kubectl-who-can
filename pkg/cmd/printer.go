@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -24,7 +25,53 @@ func NewPrinter(out io.Writer, wide bool) *Printer {
 	}
 }
 
-// PrintChecks prints permission checks returned by Check.
+// Struct to hold either rb or crb objects
+type rowData struct {
+	Name     string         `json:"name"`
+	RoleRef  rbac.RoleRef   `json:"roleRef" protobuf:"bytes,3,opt,name=roleRef"`
+	Subjects []rbac.Subject `json:"subjects,omitempty" protobuf:"bytes,2,rep,name=subjects"`
+}
+
+// ExportData exports data to a file.
+func (p *Printer) ExportData(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
+	// Final data to be exported as JSON
+	data := make(map[string]interface{})
+
+	if action.Resource != "" {
+		// NonResourceURL permissions can only be granted through ClusterRoles. Hence no point in printing RoleBindings section.
+		if len(roleBindings) != 0 {
+			rbData := []rowData{}
+			// Get required data from each roleBinding
+			for _, rb := range roleBindings {
+				if len(rb.Subjects) != 0 {
+					rbData = append(rbData, rowData{rb.Name, rb.RoleRef, rb.Subjects})
+				}
+			}
+			data["roleBindings"] = rbData
+		}
+	}
+
+	if len(clusterRoleBindings) != 0 {
+		crbData := []rowData{}
+		// Get required data from each roleBinding
+		for _, crb := range clusterRoleBindings {
+			if len(crb.Subjects) != 0 {
+				crbData = append(crbData, rowData{crb.Name, crb.RoleRef, crb.Subjects})
+			}
+		}
+		data["clusterRoleBindings"] = crbData
+	}
+
+	// get encoder to write data into output stream
+	encoder := json.NewEncoder(p.out)
+
+	// Set json indentation to 4 spaces
+	encoder.SetIndent("", "    ")
+
+	// Write data
+	_ = encoder.Encode(data)
+}
+
 func (p *Printer) PrintChecks(action Action, roleBindings []rbac.RoleBinding, clusterRoleBindings []rbac.ClusterRoleBinding) {
 	wr := new(tabwriter.Writer)
 	wr.Init(p.out, 0, 8, 2, ' ', 0)
