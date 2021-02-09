@@ -43,7 +43,9 @@ func (p *Printer) ExportData(action Action, roleBindings []rbac.RoleBinding, clu
 			rbData := []rowData{}
 			// Get required data from each roleBinding
 			for _, rb := range roleBindings {
-				rbData = append(rbData, rowData{rb.Name, rb.RoleRef, rb.Subjects})
+				if len(rb.Subjects) != 0 {
+					rbData = append(rbData, rowData{rb.Name, rb.RoleRef, rb.Subjects})
+				}
 			}
 			data["roleBindings"] = rbData
 		}
@@ -53,7 +55,9 @@ func (p *Printer) ExportData(action Action, roleBindings []rbac.RoleBinding, clu
 		crbData := []rowData{}
 		// Get required data from each roleBinding
 		for _, crb := range clusterRoleBindings {
-			crbData = append(crbData, rowData{crb.Name, crb.RoleRef, crb.Subjects})
+			if len(crb.Subjects) != 0 {
+				crbData = append(crbData, rowData{crb.Name, crb.RoleRef, crb.Subjects})
+			}
 		}
 		data["clusterRoleBindings"] = crbData
 	}

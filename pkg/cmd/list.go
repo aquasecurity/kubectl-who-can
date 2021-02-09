@@ -186,7 +186,7 @@ func NewWhoCanCommand(streams clioptions.IOStreams) (*cobra.Command, error) {
 			} else if output == outputWide || output == "" {
 				printer.PrintChecks(action, roleBindings, clusterRoleBindings)
 			} else {
-				return fmt.Errorf("Invalid output format: %v", output)
+				return fmt.Errorf("invalid output format: %v", output)
 			}
 
 			return nil
