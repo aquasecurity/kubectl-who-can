@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"errors"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -10,7 +13,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	v12 "k8s.io/client-go/kubernetes/typed/core/v1"
 	k8stesting "k8s.io/client-go/testing"
-	"testing"
 )
 
 func TestNamespaceValidator_Validate(t *testing.T) {
@@ -68,12 +70,13 @@ func TestNamespaceValidator_Validate(t *testing.T) {
 
 	for _, tt := range data {
 		t.Run(tt.TestName, func(t *testing.T) {
+			var ctx context.Context
 			// given
 			namespace := newNamespaces(newGetNamespacesReactionFunc(tt.APIReturnedNamespace, tt.APIReturnedErr))
 			validator := NewNamespaceValidator(namespace)
 
 			// when
-			err := validator.Validate("my.namespace")
+			err := validator.Validate(ctx, "my.namespace")
 
 			// then
 			assert.Equal(t, tt.ExpectedErr, err)

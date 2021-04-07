@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"context"
+
 	authz "k8s.io/api/authorization/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientauthz "k8s.io/client-go/kubernetes/typed/authorization/v1"
 )
 
@@ -10,7 +13,7 @@ import (
 // IsAllowedTo checks whether the current user is allowed to perform the given action in the specified namespace.
 // Specifying "" as namespace performs check in all namespaces.
 type AccessChecker interface {
-	IsAllowedTo(verb, resource, namespace string) (bool, error)
+	IsAllowedTo(ctx context.Context, verb, resource, namespace string, opts metav1.CreateOptions) (bool, error)
 }
 
 type accessChecker struct {
@@ -24,7 +27,7 @@ func NewAccessChecker(client clientauthz.SelfSubjectAccessReviewInterface) Acces
 	}
 }
 
-func (ac *accessChecker) IsAllowedTo(verb, resource, namespace string) (bool, error) {
+func (ac *accessChecker) IsAllowedTo(ctx context.Context, verb, resource, namespace string, opts metav1.CreateOptions) (bool, error) {
 	sar := &authz.SelfSubjectAccessReview{
 		Spec: authz.SelfSubjectAccessReviewSpec{
 			ResourceAttributes: &authz.ResourceAttributes{
@@ -35,7 +38,7 @@ func (ac *accessChecker) IsAllowedTo(verb, resource, namespace string) (bool, er
 		},
 	}
 
-	sar, err := ac.client.Create(sar)
+	sar, err := ac.client.Create(ctx, sar, opts)
 	if err != nil {
 		return false, err
 	}

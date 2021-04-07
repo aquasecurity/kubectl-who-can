@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,7 +15,7 @@ import (
 // Validate checks whether the given namespace exists or not.
 // Returns nil if it exists, an error otherwise.
 type NamespaceValidator interface {
-	Validate(name string) error
+	Validate(ctx context.Context, name string) error
 }
 
 type namespaceValidator struct {
@@ -27,9 +29,9 @@ func NewNamespaceValidator(client clientcore.NamespaceInterface) NamespaceValida
 	}
 }
 
-func (w *namespaceValidator) Validate(name string) error {
+func (w *namespaceValidator) Validate(ctx context.Context, name string) error {
 	if name != core.NamespaceAll {
-		ns, err := w.client.Get(name, meta.GetOptions{})
+		ns, err := w.client.Get(ctx, name, meta.GetOptions{})
 		if err != nil {
 			if statusErr, ok := err.(*errors.StatusError); ok &&
 				statusErr.Status().Reason == meta.StatusReasonNotFound {

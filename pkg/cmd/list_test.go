@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	core "k8s.io/api/core/v1"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
@@ -23,7 +24,7 @@ type accessCheckerMock struct {
 	mock.Mock
 }
 
-func (m *accessCheckerMock) IsAllowedTo(verb, resource, namespace string) (bool, error) {
+func (m *accessCheckerMock) IsAllowedTo(ctx context.Context, verb, resource, namespace string, opts metav1.CreateOptions) (bool, error) {
 	args := m.Called(verb, resource, namespace)
 	return args.Bool(0), args.Error(1)
 }
@@ -32,7 +33,7 @@ type namespaceValidatorMock struct {
 	mock.Mock
 }
 
-func (w *namespaceValidatorMock) Validate(name string) error {
+func (w *namespaceValidatorMock) Validate(ctx context.Context, name string) error {
 	args := w.Called(name)
 	return args.Error(0)
 }
@@ -223,6 +224,7 @@ func TestValidate(t *testing.T) {
 
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
+			ctx := context.Background()
 			// given
 			namespaceValidator := new(namespaceValidatorMock)
 			if tt.namespaceValidation != nil {
@@ -241,7 +243,7 @@ func TestValidate(t *testing.T) {
 			}
 
 			// when
-			err := o.validate(action)
+			err := o.validate(ctx, action)
 
 			// then
 			assert.Equal(t, tt.expectedErr, err)
@@ -268,10 +270,10 @@ func TestWhoCan_CheckAPIAccess(t *testing.T) {
 		list := &core.NamespaceList{
 			Items: []core.Namespace{
 				{
-					ObjectMeta: meta.ObjectMeta{Name: FooNs},
+					ObjectMeta: metav1.ObjectMeta{Name: FooNs},
 				},
 				{
-					ObjectMeta: meta.ObjectMeta{Name: BarNs},
+					ObjectMeta: metav1.ObjectMeta{Name: BarNs},
 				},
 			},
 		}
@@ -322,6 +324,7 @@ func TestWhoCan_CheckAPIAccess(t *testing.T) {
 
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
+			ctx := context.Background()
 			// setup
 			namespaceValidator := new(namespaceValidatorMock)
 			resourceResolver := new(resourceResolverMock)
@@ -346,7 +349,7 @@ func TestWhoCan_CheckAPIAccess(t *testing.T) {
 			}
 
 			// when
-			warnings, err := wc.CheckAPIAccess(action)
+			warnings, err := wc.CheckAPIAccess(ctx, action, metav1.CreateOptions{})
 
 			// then
 			assert.Equal(t, tt.expectedError, err)
@@ -362,11 +365,12 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	// given
 	policyRuleMatcher := new(policyRuleMatcherMock)
 	client := fake.NewSimpleClientset()
+	ctx := context.Background()
 
 	action := resolvedAction{Action: Action{Verb: "list", Resource: "services"}}
 
 	viewServicesRole := rbac.Role{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "view-services",
 		},
 		Rules: []rbac.PolicyRule{
@@ -378,7 +382,7 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	}
 
 	viewPodsRole := rbac.Role{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "view-pods",
 		},
 		Rules: []rbac.PolicyRule{
@@ -409,7 +413,7 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	}
 
 	// when
-	names, err := wc.getRolesFor(action)
+	names, err := wc.getRolesFor(ctx, action)
 
 	// then
 	require.NoError(t, err)
@@ -421,11 +425,12 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	// given
 	policyRuleMatcher := new(policyRuleMatcherMock)
 	client := fake.NewSimpleClientset()
+	ctx := context.Background()
 
 	action := resolvedAction{Action: Action{Verb: "get", Resource: "/logs"}}
 
 	getLogsRole := rbac.ClusterRole{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "get-logs",
 		},
 		Rules: []rbac.PolicyRule{
@@ -437,7 +442,7 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	}
 
 	getApiRole := rbac.ClusterRole{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "get-api",
 		},
 		Rules: []rbac.PolicyRule{
@@ -468,7 +473,7 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	}
 
 	// when
-	names, err := wc.getClusterRolesFor(action)
+	names, err := wc.getClusterRolesFor(ctx, action)
 
 	// then
 	require.NoError(t, err)
@@ -478,13 +483,14 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 
 func TestWhoCan_GetRoleBindings(t *testing.T) {
 	client := fake.NewSimpleClientset()
+	ctx := context.Background()
 
 	namespace := "foo"
 	roleNames := map[string]struct{}{"view-pods": {}}
 	clusterRoleNames := map[string]struct{}{"view-configmaps": {}}
 
 	viewPodsBnd := rbac.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "view-pods-bnd",
 			Namespace: namespace,
 		},
@@ -495,7 +501,7 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 	}
 
 	viewConfigMapsBnd := rbac.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "view-configmaps-bnd",
 		},
 		RoleRef: rbac.RoleRef{
@@ -521,7 +527,7 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 	action := resolvedAction{Action: Action{Namespace: namespace}}
 
 	// when
-	bindings, err := wc.getRoleBindings(action, roleNames, clusterRoleNames)
+	bindings, err := wc.getRoleBindings(ctx, action, roleNames, clusterRoleNames)
 
 	// then
 	require.NoError(t, err)
@@ -532,11 +538,11 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 
 func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	client := fake.NewSimpleClientset()
-
+	ctx := context.Background()
 	clusterRoleNames := map[string]struct{}{"get-healthz": {}}
 
 	getLogsBnd := rbac.ClusterRoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "get-logs-bnd",
 		},
 		RoleRef: rbac.RoleRef{
@@ -546,7 +552,7 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	}
 
 	getHealthzBnd := rbac.ClusterRoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "get-healthz-bnd",
 		},
 		RoleRef: rbac.RoleRef{
@@ -571,7 +577,7 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	}
 
 	// when
-	bindings, err := wc.getClusterRoleBindings(clusterRoleNames)
+	bindings, err := wc.getClusterRoleBindings(ctx, clusterRoleNames)
 
 	// then
 	require.NoError(t, err)
