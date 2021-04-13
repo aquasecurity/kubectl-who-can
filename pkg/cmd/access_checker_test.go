@@ -1,13 +1,11 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	authz "k8s.io/api/authorization/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	clientauthz "k8s.io/client-go/kubernetes/typed/authorization/v1"
@@ -44,9 +42,9 @@ func TestIsAllowed(t *testing.T) {
 		t.Run(tt.scenario, func(t *testing.T) {
 			// given
 			client := newClient(tt.reactionFunc)
-			ctx := context.Background()
+
 			// when
-			allowed, err := NewAccessChecker(client).IsAllowedTo(ctx, "list", "roles", "", metav1.CreateOptions{})
+			allowed, err := NewAccessChecker(client).IsAllowedTo("list", "roles", "")
 
 			// then
 			assert.Equal(t, tt.allowed, allowed)

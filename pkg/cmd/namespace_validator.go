@@ -15,7 +15,7 @@ import (
 // Validate checks whether the given namespace exists or not.
 // Returns nil if it exists, an error otherwise.
 type NamespaceValidator interface {
-	Validate(ctx context.Context, name string) error
+	Validate(name string) error
 }
 
 type namespaceValidator struct {
@@ -29,8 +29,9 @@ func NewNamespaceValidator(client clientcore.NamespaceInterface) NamespaceValida
 	}
 }
 
-func (w *namespaceValidator) Validate(ctx context.Context, name string) error {
+func (w *namespaceValidator) Validate(name string) error {
 	if name != core.NamespaceAll {
+		ctx := context.Background()
 		ns, err := w.client.Get(ctx, name, meta.GetOptions{})
 		if err != nil {
 			if statusErr, ok := err.(*errors.StatusError); ok &&

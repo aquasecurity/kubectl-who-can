@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -70,13 +69,12 @@ func TestNamespaceValidator_Validate(t *testing.T) {
 
 	for _, tt := range data {
 		t.Run(tt.TestName, func(t *testing.T) {
-			var ctx context.Context
 			// given
 			namespace := newNamespaces(newGetNamespacesReactionFunc(tt.APIReturnedNamespace, tt.APIReturnedErr))
 			validator := NewNamespaceValidator(namespace)
 
 			// when
-			err := validator.Validate(ctx, "my.namespace")
+			err := validator.Validate("my.namespace")
 
 			// then
 			assert.Equal(t, tt.ExpectedErr, err)

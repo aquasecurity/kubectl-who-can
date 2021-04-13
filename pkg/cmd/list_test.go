@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -24,7 +23,7 @@ type accessCheckerMock struct {
 	mock.Mock
 }
 
-func (m *accessCheckerMock) IsAllowedTo(ctx context.Context, verb, resource, namespace string, opts metav1.CreateOptions) (bool, error) {
+func (m *accessCheckerMock) IsAllowedTo(verb, resource, namespace string) (bool, error) {
 	args := m.Called(verb, resource, namespace)
 	return args.Bool(0), args.Error(1)
 }
@@ -33,7 +32,7 @@ type namespaceValidatorMock struct {
 	mock.Mock
 }
 
-func (w *namespaceValidatorMock) Validate(ctx context.Context, name string) error {
+func (w *namespaceValidatorMock) Validate(name string) error {
 	args := w.Called(name)
 	return args.Error(0)
 }
@@ -224,7 +223,6 @@ func TestValidate(t *testing.T) {
 
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
-			ctx := context.Background()
 			// given
 			namespaceValidator := new(namespaceValidatorMock)
 			if tt.namespaceValidation != nil {
@@ -243,7 +241,7 @@ func TestValidate(t *testing.T) {
 			}
 
 			// when
-			err := o.validate(ctx, action)
+			err := o.validate(action)
 
 			// then
 			assert.Equal(t, tt.expectedErr, err)
@@ -324,7 +322,6 @@ func TestWhoCan_CheckAPIAccess(t *testing.T) {
 
 	for _, tt := range data {
 		t.Run(tt.scenario, func(t *testing.T) {
-			ctx := context.Background()
 			// setup
 			namespaceValidator := new(namespaceValidatorMock)
 			resourceResolver := new(resourceResolverMock)
@@ -349,7 +346,7 @@ func TestWhoCan_CheckAPIAccess(t *testing.T) {
 			}
 
 			// when
-			warnings, err := wc.CheckAPIAccess(ctx, action, metav1.CreateOptions{})
+			warnings, err := wc.CheckAPIAccess(action)
 
 			// then
 			assert.Equal(t, tt.expectedError, err)
@@ -365,7 +362,6 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	// given
 	policyRuleMatcher := new(policyRuleMatcherMock)
 	client := fake.NewSimpleClientset()
-	ctx := context.Background()
 
 	action := resolvedAction{Action: Action{Verb: "list", Resource: "services"}}
 
@@ -413,7 +409,7 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	}
 
 	// when
-	names, err := wc.getRolesFor(ctx, action)
+	names, err := wc.getRolesFor(action)
 
 	// then
 	require.NoError(t, err)
@@ -425,7 +421,6 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	// given
 	policyRuleMatcher := new(policyRuleMatcherMock)
 	client := fake.NewSimpleClientset()
-	ctx := context.Background()
 
 	action := resolvedAction{Action: Action{Verb: "get", Resource: "/logs"}}
 
@@ -473,7 +468,7 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	}
 
 	// when
-	names, err := wc.getClusterRolesFor(ctx, action)
+	names, err := wc.getClusterRolesFor(action)
 
 	// then
 	require.NoError(t, err)
@@ -483,7 +478,6 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 
 func TestWhoCan_GetRoleBindings(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	ctx := context.Background()
 
 	namespace := "foo"
 	roleNames := map[string]struct{}{"view-pods": {}}
@@ -527,7 +521,7 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 	action := resolvedAction{Action: Action{Namespace: namespace}}
 
 	// when
-	bindings, err := wc.getRoleBindings(ctx, action, roleNames, clusterRoleNames)
+	bindings, err := wc.getRoleBindings(action, roleNames, clusterRoleNames)
 
 	// then
 	require.NoError(t, err)
@@ -538,7 +532,6 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 
 func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	ctx := context.Background()
 	clusterRoleNames := map[string]struct{}{"get-healthz": {}}
 
 	getLogsBnd := rbac.ClusterRoleBinding{
@@ -577,7 +570,7 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	}
 
 	// when
-	bindings, err := wc.getClusterRoleBindings(ctx, clusterRoleNames)
+	bindings, err := wc.getClusterRoleBindings(clusterRoleNames)
 
 	// then
 	require.NoError(t, err)

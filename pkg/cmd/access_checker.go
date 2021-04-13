@@ -13,7 +13,7 @@ import (
 // IsAllowedTo checks whether the current user is allowed to perform the given action in the specified namespace.
 // Specifying "" as namespace performs check in all namespaces.
 type AccessChecker interface {
-	IsAllowedTo(ctx context.Context, verb, resource, namespace string, opts metav1.CreateOptions) (bool, error)
+	IsAllowedTo(verb, resource, namespace string) (bool, error)
 }
 
 type accessChecker struct {
@@ -27,7 +27,7 @@ func NewAccessChecker(client clientauthz.SelfSubjectAccessReviewInterface) Acces
 	}
 }
 
-func (ac *accessChecker) IsAllowedTo(ctx context.Context, verb, resource, namespace string, opts metav1.CreateOptions) (bool, error) {
+func (ac *accessChecker) IsAllowedTo(verb, resource, namespace string) (bool, error) {
 	sar := &authz.SelfSubjectAccessReview{
 		Spec: authz.SelfSubjectAccessReviewSpec{
 			ResourceAttributes: &authz.ResourceAttributes{
@@ -38,7 +38,7 @@ func (ac *accessChecker) IsAllowedTo(ctx context.Context, verb, resource, namesp
 		},
 	}
 
-	sar, err := ac.client.Create(ctx, sar, opts)
+	sar, err := ac.client.Create(context.Background(), sar, metav1.CreateOptions{})
 	if err != nil {
 		return false, err
 	}
