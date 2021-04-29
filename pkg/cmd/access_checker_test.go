@@ -2,13 +2,14 @@ package cmd
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	authz "k8s.io/api/authorization/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	clientauthz "k8s.io/client-go/kubernetes/typed/authorization/v1"
 	clienttesting "k8s.io/client-go/testing"
-	"testing"
 )
 
 func TestIsAllowed(t *testing.T) {

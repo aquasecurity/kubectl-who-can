@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 	core "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clioptions "k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
@@ -335,12 +336,13 @@ func (w *WhoCan) CheckAPIAccess(action Action) ([]string, error) {
 
 	var checks []check
 	var warnings []string
+	ctx := context.Background()
 
 	// Determine which checks need to be executed.
 	if action.Namespace == "" {
 		checks = append(checks, check{"list", "namespaces", ""})
 
-		nsList, err := w.clientNamespace.List(meta.ListOptions{})
+		nsList, err := w.clientNamespace.List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("listing namespaces: %v", err)
 		}
@@ -377,7 +379,8 @@ func (w *WhoCan) CheckAPIAccess(action Action) ([]string, error) {
 
 // GetRolesFor returns a set of names of Roles matching the specified Action.
 func (w *WhoCan) getRolesFor(action resolvedAction) (roles, error) {
-	rl, err := w.clientRBAC.Roles(action.Namespace).List(meta.ListOptions{})
+	ctx := context.Background()
+	rl, err := w.clientRBAC.Roles(action.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +400,8 @@ func (w *WhoCan) getRolesFor(action resolvedAction) (roles, error) {
 
 // GetClusterRolesFor returns a set of names of ClusterRoles matching the specified Action.
 func (w *WhoCan) getClusterRolesFor(action resolvedAction) (clusterRoles, error) {
-	crl, err := w.clientRBAC.ClusterRoles().List(meta.ListOptions{})
+	ctx := context.Background()
+	crl, err := w.clientRBAC.ClusterRoles().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -420,8 +424,8 @@ func (w *WhoCan) getRoleBindings(action resolvedAction, roleNames roles, cluster
 	if action.Namespace == core.NamespaceAll {
 		return
 	}
-
-	list, err := w.clientRBAC.RoleBindings(action.Namespace).List(meta.ListOptions{})
+	ctx := context.Background()
+	list, err := w.clientRBAC.RoleBindings(action.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return
 	}
@@ -443,7 +447,8 @@ func (w *WhoCan) getRoleBindings(action resolvedAction, roleNames roles, cluster
 
 // GetClusterRoleBindings returns the ClusterRoleBindings that refer to the given sef of ClusterRole names.
 func (w *WhoCan) getClusterRoleBindings(clusterRoleNames clusterRoles) (clusterRoleBindings []rbac.ClusterRoleBinding, err error) {
-	list, err := w.clientRBAC.ClusterRoleBindings().List(meta.ListOptions{})
+	ctx := context.Background()
+	list, err := w.clientRBAC.ClusterRoleBindings().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return
 	}

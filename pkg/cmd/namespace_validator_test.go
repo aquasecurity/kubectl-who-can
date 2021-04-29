@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -10,7 +12,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	v12 "k8s.io/client-go/kubernetes/typed/core/v1"
 	k8stesting "k8s.io/client-go/testing"
-	"testing"
 )
 
 func TestNamespaceValidator_Validate(t *testing.T) {

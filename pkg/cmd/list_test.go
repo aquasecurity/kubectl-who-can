@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	core "k8s.io/api/core/v1"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
@@ -268,10 +268,10 @@ func TestWhoCan_CheckAPIAccess(t *testing.T) {
 		list := &core.NamespaceList{
 			Items: []core.Namespace{
 				{
-					ObjectMeta: meta.ObjectMeta{Name: FooNs},
+					ObjectMeta: metav1.ObjectMeta{Name: FooNs},
 				},
 				{
-					ObjectMeta: meta.ObjectMeta{Name: BarNs},
+					ObjectMeta: metav1.ObjectMeta{Name: BarNs},
 				},
 			},
 		}
@@ -366,7 +366,7 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	action := resolvedAction{Action: Action{Verb: "list", Resource: "services"}}
 
 	viewServicesRole := rbac.Role{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "view-services",
 		},
 		Rules: []rbac.PolicyRule{
@@ -378,7 +378,7 @@ func TestWhoCan_GetRolesFor(t *testing.T) {
 	}
 
 	viewPodsRole := rbac.Role{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "view-pods",
 		},
 		Rules: []rbac.PolicyRule{
@@ -425,7 +425,7 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	action := resolvedAction{Action: Action{Verb: "get", Resource: "/logs"}}
 
 	getLogsRole := rbac.ClusterRole{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "get-logs",
 		},
 		Rules: []rbac.PolicyRule{
@@ -437,7 +437,7 @@ func TestWhoCan_GetClusterRolesFor(t *testing.T) {
 	}
 
 	getApiRole := rbac.ClusterRole{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "get-api",
 		},
 		Rules: []rbac.PolicyRule{
@@ -484,7 +484,7 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 	clusterRoleNames := map[string]struct{}{"view-configmaps": {}}
 
 	viewPodsBnd := rbac.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "view-pods-bnd",
 			Namespace: namespace,
 		},
@@ -495,7 +495,7 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 	}
 
 	viewConfigMapsBnd := rbac.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "view-configmaps-bnd",
 		},
 		RoleRef: rbac.RoleRef{
@@ -532,11 +532,10 @@ func TestWhoCan_GetRoleBindings(t *testing.T) {
 
 func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	client := fake.NewSimpleClientset()
-
 	clusterRoleNames := map[string]struct{}{"get-healthz": {}}
 
 	getLogsBnd := rbac.ClusterRoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "get-logs-bnd",
 		},
 		RoleRef: rbac.RoleRef{
@@ -546,7 +545,7 @@ func TestWhoCan_GetClusterRoleBindings(t *testing.T) {
 	}
 
 	getHealthzBnd := rbac.ClusterRoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "get-healthz-bnd",
 		},
 		RoleRef: rbac.RoleRef{

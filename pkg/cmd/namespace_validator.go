@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,7 +31,8 @@ func NewNamespaceValidator(client clientcore.NamespaceInterface) NamespaceValida
 
 func (w *namespaceValidator) Validate(name string) error {
 	if name != core.NamespaceAll {
-		ns, err := w.client.Get(name, meta.GetOptions{})
+		ctx := context.Background()
+		ns, err := w.client.Get(ctx, name, meta.GetOptions{})
 		if err != nil {
 			if statusErr, ok := err.(*errors.StatusError); ok &&
 				statusErr.Status().Reason == meta.StatusReasonNotFound {

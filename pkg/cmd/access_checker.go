@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"context"
+
 	authz "k8s.io/api/authorization/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientauthz "k8s.io/client-go/kubernetes/typed/authorization/v1"
 )
 
@@ -35,7 +38,7 @@ func (ac *accessChecker) IsAllowedTo(verb, resource, namespace string) (bool, er
 		},
 	}
 
-	sar, err := ac.client.Create(sar)
+	sar, err := ac.client.Create(context.Background(), sar, metav1.CreateOptions{})
 	if err != nil {
 		return false, err
 	}

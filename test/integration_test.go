@@ -2,11 +2,10 @@ package test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"strings"
 	"testing"
-
-	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/aquasecurity/kubectl-who-can/pkg/cmd"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +14,8 @@ import (
 	rbac "k8s.io/api/rbac/v1"
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	clientext "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1beta1"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	clioptions "k8s.io/cli-runtime/pkg/genericclioptions"
 	client "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -139,8 +139,9 @@ func prettyPrintWhoCanOutput(t *testing.T, args []string, out *bytes.Buffer) {
 
 func createCRDs(t *testing.T, client clientext.CustomResourceDefinitionInterface) {
 	t.Helper()
-	_, err := client.Create(&apiext.CustomResourceDefinition{
-		ObjectMeta: meta.ObjectMeta{
+	ctx := context.Background()
+	_, err := client.Create(ctx, &apiext.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "pods.metrics.k8s.io",
 			Labels: commonLabels,
 		},
@@ -161,20 +162,20 @@ func createCRDs(t *testing.T, client clientext.CustomResourceDefinitionInterface
 				ShortNames: []string{"po"},
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 }
 
 func configureRBAC(t *testing.T, coreClient client.Interface) {
 	t.Helper()
-
+	ctx := context.Background()
 	clientRBAC := coreClient.RbacV1()
 
 	const namespaceFoo = "foo"
 
 	// Define ClusterRoles and ClusterRoleBindings
-	_, err := clientRBAC.ClusterRoles().Create(&rbac.ClusterRole{
-		ObjectMeta: meta.ObjectMeta{
+	_, err := clientRBAC.ClusterRoles().Create(ctx, &rbac.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "create-configmaps",
 			Labels: commonLabels,
 		},
@@ -185,11 +186,11 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Resources: []string{"configmaps"},
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = clientRBAC.ClusterRoles().Create(&rbac.ClusterRole{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.ClusterRoles().Create(ctx, &rbac.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "get-logs",
 			Labels: commonLabels,
 		},
@@ -199,11 +200,11 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				NonResourceURLs: []string{"/logs"},
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = clientRBAC.ClusterRoles().Create(&rbac.ClusterRole{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.ClusterRoles().Create(ctx, &rbac.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "view-pod-metrics",
 			Labels: commonLabels,
 		},
@@ -214,10 +215,10 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Resources: []string{"pods"},
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 
-	_, err = clientRBAC.ClusterRoleBindings().Create(&rbac.ClusterRoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.ClusterRoleBindings().Create(ctx, &rbac.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "bob-can-get-logs",
 			Labels: commonLabels,
 		},
@@ -231,11 +232,11 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Name: "Bob",
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = clientRBAC.ClusterRoleBindings().Create(&rbac.ClusterRoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.ClusterRoleBindings().Create(ctx, &rbac.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "spiderman-can-view-pod-metrics",
 			Labels: commonLabels,
 		},
@@ -249,11 +250,11 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Name: "Spiderman",
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 
 	// Define Roles and RoleBindings
-	_, err = clientRBAC.Roles(core.NamespaceDefault).Create(&rbac.Role{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.Roles(core.NamespaceDefault).Create(ctx, &rbac.Role{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "create-configmaps",
 			Labels: commonLabels,
 		},
@@ -264,11 +265,11 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Resources: []string{"configmaps"},
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = clientRBAC.RoleBindings(core.NamespaceDefault).Create(&rbac.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.RoleBindings(core.NamespaceDefault).Create(ctx, &rbac.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "alice-can-create-configmaps",
 			Labels: commonLabels,
 		},
@@ -282,11 +283,11 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Name: "Alice",
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = clientRBAC.RoleBindings(core.NamespaceDefault).Create(&rbac.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.RoleBindings(core.NamespaceDefault).Create(ctx, &rbac.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rory-can-create-configmaps",
 			Labels: commonLabels,
 		},
@@ -300,11 +301,11 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Name: "Rory",
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = clientRBAC.Roles(core.NamespaceDefault).Create(&rbac.Role{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.Roles(core.NamespaceDefault).Create(ctx, &rbac.Role{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "scale-workloads",
 			Labels: commonLabels,
 		},
@@ -315,10 +316,10 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Resources: []string{"deployments/scale"},
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 
-	_, err = clientRBAC.RoleBindings(core.NamespaceDefault).Create(&rbac.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.RoleBindings(core.NamespaceDefault).Create(ctx, &rbac.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "devops-can-scale-workloads",
 			Labels: commonLabels,
 		},
@@ -332,19 +333,19 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Name: "devops",
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 
 	// Configure foo namespace
-	_, err = coreClient.CoreV1().Namespaces().Create(&core.Namespace{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = coreClient.CoreV1().Namespaces().Create(ctx, &core.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   namespaceFoo,
 			Labels: commonLabels,
 		},
-	})
+	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = clientRBAC.Roles(namespaceFoo).Create(&rbac.Role{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.Roles(namespaceFoo).Create(ctx, &rbac.Role{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "view-services",
 			Labels: commonLabels,
 		},
@@ -360,11 +361,11 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Resources: []string{"endpoints"},
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	_, err = clientRBAC.Roles(namespaceFoo).Create(&rbac.Role{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.Roles(namespaceFoo).Create(ctx, &rbac.Role{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "view-pod-xyz",
 			Labels: commonLabels,
 		},
@@ -376,10 +377,10 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				ResourceNames: []string{"pod-xyz"},
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 
-	_, err = clientRBAC.RoleBindings(namespaceFoo).Create(&rbac.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.RoleBindings(namespaceFoo).Create(ctx, &rbac.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "operator-can-view-services",
 			Labels: commonLabels,
 		},
@@ -394,10 +395,10 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Namespace: "bar",
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 
-	_, err = clientRBAC.RoleBindings(namespaceFoo).Create(&rbac.RoleBinding{
-		ObjectMeta: meta.ObjectMeta{
+	_, err = clientRBAC.RoleBindings(namespaceFoo).Create(ctx, &rbac.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   "batman-can-view-pod-xyz",
 			Labels: commonLabels,
 		},
@@ -411,6 +412,6 @@ func configureRBAC(t *testing.T, coreClient client.Interface) {
 				Name: "Batman",
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 
 }
