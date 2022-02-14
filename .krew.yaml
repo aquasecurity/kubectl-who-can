@@ -41,6 +41,17 @@ spec:
       bin: kubectl-who-can
     - selector:
         matchLabels:
+          os: darwin
+          arch: arm64
+      {{addURIAndSha "https://github.com/aquasecurity/kubectl-who-can/releases/download/{{ .TagName }}/kubectl-who-can_darwin_arm64.tar.gz" .TagName | indent 6}}
+      files:
+        - from: kubectl-who-can
+          to: .
+        - from: LICENSE
+          to: .
+      bin: kubectl-who-can
+    - selector:
+        matchLabels:
           os: linux
           arch: amd64
       {{addURIAndSha "https://github.com/aquasecurity/kubectl-who-can/releases/download/{{ .TagName }}/kubectl-who-can_linux_x86_64.tar.gz" .TagName | indent 6}}
@@ -52,9 +63,31 @@ spec:
       bin: kubectl-who-can
     - selector:
         matchLabels:
+          os: linux
+          arch: arm64
+      {{addURIAndSha "https://github.com/aquasecurity/kubectl-who-can/releases/download/{{ .TagName }}/kubectl-who-can_linux_arm64.tar.gz" .TagName | indent 6}}
+      files:
+        - from: kubectl-who-can
+          to: .
+        - from: LICENSE
+          to: .
+      bin: kubectl-who-can
+    - selector:
+        matchLabels:
           os: windows
           arch: amd64
       {{addURIAndSha "https://github.com/aquasecurity/kubectl-who-can/releases/download/{{ .TagName }}/kubectl-who-can_windows_x86_64.zip" .TagName | indent 6}}
+      files:
+        - from: kubectl-who-can.exe
+          to: .
+        - from: LICENSE
+          to: .
+      bin: kubectl-who-can.exe
+    - selector:
+        matchLabels:
+          os: windows
+          arch: arm64
+      {{addURIAndSha "https://github.com/aquasecurity/kubectl-who-can/releases/download/{{ .TagName }}/kubectl-who-can_windows_arm64.zip" .TagName | indent 6}}
       files:
         - from: kubectl-who-can.exe
           to: .
