@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/pflag"
 	// Load all known auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func initFlags() {

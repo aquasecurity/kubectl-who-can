@@ -2,7 +2,7 @@ package cmd
 
 import (
 	rbac "k8s.io/api/rbac/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 // PolicyRuleMatcher wraps the Matches* methods.
