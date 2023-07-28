@@ -66,9 +66,9 @@ The `kubectl-who-can` binary will be in `$GOPATH/bin`.
 
 Option 3 (if you don't have a Go compiler, but have Docker installed):
 ```
-docker run --rm -v /usr/local/bin:/go/bin golang:1.17 go install github.com/aquasecurity/kubectl-who-can/cmd/kubectl-who-can@latest
+docker run --rm -v $GOPATH/bin:/go/bin golang:1.17 go install github.com/aquasecurity/kubectl-who-can/cmd/kubectl-who-can@latest
 ```
-The `kubectl-who-can` binary will be in `/usr/local/bin`.
+The `kubectl-who-can` binary will be in `$GOPATH/bin`.
 
 ## Usage
 
